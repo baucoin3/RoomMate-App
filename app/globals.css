@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&family=Playfair+Display:ital,wght@0,500;1,400&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,6 +7,16 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Warm cookbook theme — used by all recipe components */
+  --color-border-secondary: rgba(190, 150, 75, 0.15);
+  --color-border-tertiary: rgba(190, 150, 75, 0.08);
+  --color-border-primary: rgba(210, 165, 70, 0.55);
+  --color-background-secondary: rgba(160, 115, 40, 0.10);
+  --color-background-card: rgba(160, 115, 40, 0.06);
+  --color-text-primary: rgba(255, 247, 230, 0.92);
+  --color-text-secondary: rgba(255, 235, 190, 0.55);
+  --color-text-tertiary: rgba(255, 220, 160, 0.30);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -24,4 +36,16 @@ body {
   .text-balance {
     text-wrap: balance;
   }
+}
+
+@keyframes gradientShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animated-gradient {
+  background: linear-gradient(90deg, #7EC8E3, #F5C518, #FF8C00, #C0392B, #FF8C00, #F5C518, #7EC8E3);
+  background-size: 300% 300%;
+  animation: gradientShift 10s ease infinite;
 }

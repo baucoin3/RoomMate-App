@@ -1,0 +1,116 @@
+---
+description: React and Next.js component conventions for .tsx files
+globs: **/*.tsx
+alwaysApply: false
+---
+
+# React / Next.js Conventions
+
+## No Hardcoded Text in JSX
+
+All visible strings must come from the locale file. Import the relevant namespace:
+
+```tsx
+// ❌ BAD
+<button>Sign In</button>
+<p>Check your email to confirm your account.</p>
+
+// ✅ GOOD
+import { AUTH } from '@/locales/en'
+<button>{AUTH.ACTIONS.SIGN_IN}</button>
+<p>{AUTH.MESSAGES.CONFIRM_EMAIL}</p>
+```
+
+## Functional Components with Typed Props
+
+```tsx
+// ❌ BAD
+export default function ErrorBanner(props: any) { ... }
+
+// ✅ GOOD
+interface ErrorBannerProps {
+  message: string
+}
+export default function ErrorBanner({ message }: ErrorBannerProps) { ... }
+```
+
+## `'use client'` Boundary
+
+- Default to **Server Components**. Add `'use client'` only when you need browser APIs, event handlers, or React state.
+- Never import `lib/supabase/client.ts` in a Server Component.
+
+## Data Fetching — Service Layer vs apiClient
+
+**Server Components** must call `lib/services/` functions directly. They must never make HTTP calls to their own API routes.
+
+```tsx
+// ❌ BAD — server component calling its own API over HTTP
+async function getData(id: string) {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/dashboard/${id}`)
+  return res.json()
+}
+
+// ✅ GOOD — server component calls the service directly
+import { getDashboardData } from '@/lib/services/dashboard'
+const supabase = createClient()
+const { data } = await getDashboardData(supabase, householdId, memberId)
+```
+
+**Client Components and hooks** must use `apiClient` from `lib/api/client.ts`. Never use `fetch()`.
+
+```tsx
+// ❌ BAD — fetch() in a client component
+const res = await fetch('/api/households')
+
+// ✅ GOOD — apiClient in a client component or hook
+import { apiClient, getErrorMessage } from '@/lib/api/client'
+try {
+  const res = await apiClient.get<{ households: Household[] }>('/api/households')
+  setHouseholds(res.data.households)
+} catch (err) {
+  setError(getErrorMessage(err))
+}
+```
+
+## Loading and Error States
+
+Every data-fetching component must handle all three states:
+
+```tsx
+if (loading) return <LoadingSpinner />
+if (error) return <ErrorBanner message={error} />
+return <ActualContent data={data} />
+```
+
+## Custom Hooks for Reusable Logic
+
+Extract `useState` + `useEffect` + `apiClient` combos into `hooks/use*.ts`:
+
+```ts
+// hooks/useCurrentUser.ts
+export function useCurrentUser() {
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  // ...
+  return { user, loading, error }
+}
+```
+
+## No `router.push` with Literal Strings
+
+Always use constants from `lib/constants/routes.ts`:
+
+```tsx
+// ❌ BAD
+router.push('/dashboard')
+
+// ✅ GOOD
+import { ROUTES } from '@/lib/constants/routes'
+router.push(ROUTES.DASHBOARD)
+```
+
+## Accessibility
+
+- Interactive elements need accessible labels (`aria-label`, `role`, or visible text).
+- `ErrorBanner` already uses `role="alert"` — follow that pattern for other status messages.

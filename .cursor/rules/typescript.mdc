@@ -1,0 +1,77 @@
+---
+description: TypeScript standards for all .ts and .tsx files
+globs: **/*.ts, **/*.tsx
+alwaysApply: false
+---
+
+# TypeScript Standards
+
+## Strict Mode — Always
+
+`tsconfig.json` has `"strict": true`. Never disable or cast away errors with `as any`.
+
+```ts
+// ❌ BAD
+const data = response.data as any
+const user = result as unknown as User
+
+// ✅ GOOD — parse/validate with a type guard or zod
+function isUser(val: unknown): val is User {
+  return typeof val === 'object' && val !== null && 'id' in val && 'email' in val
+}
+```
+
+## Shared Types
+
+- Domain interfaces live in `lib/types/` and are imported everywhere — never define the same interface in multiple files.
+- Use `interface` for object shapes; use `type` for unions, intersections, and mapped types.
+
+```ts
+// lib/types/user.ts
+export interface User {
+  id: string
+  email: string
+}
+
+// lib/types/api.ts
+export type ApiSuccess<T> = { data: T; error: null }
+export type ApiError = { data: null; error: string }
+export type ApiResult<T> = ApiSuccess<T> | ApiError
+```
+
+## Generic API Responses
+
+Always use generics on axios calls so response shapes are typed end-to-end:
+
+```ts
+// ❌ BAD
+const res = await apiClient.get('/api/auth/user')
+const user = res.data.user // implicit any
+
+// ✅ GOOD
+const res = await apiClient.get<{ user: User }>('/api/auth/user')
+const { user } = res.data
+```
+
+## No Implicit Returns / Undefined Paths
+
+All functions that can return `undefined` must declare it in their return type. Use `satisfies` to verify object literals match a type without losing inference:
+
+```ts
+export const config = {
+  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+} satisfies Record<string, string>
+```
+
+## Enums → `as const` Objects
+
+Avoid TypeScript `enum`. Use `as const` objects paired with a derived union type:
+
+```ts
+// ❌ BAD
+enum Role { Admin = 'admin', Member = 'member' }
+
+// ✅ GOOD
+export const ROLE = { ADMIN: 'admin', MEMBER: 'member' } as const
+export type Role = (typeof ROLE)[keyof typeof ROLE]
+```

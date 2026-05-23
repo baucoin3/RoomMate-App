@@ -1,0 +1,94 @@
+---
+description: Supabase database query standards — batching, joins, RLS, no DB calls in loops
+globs: app/api/**/*.ts, lib/**/*.ts
+alwaysApply: false
+---
+
+# Database Standards (Supabase / Postgres)
+
+## Never Call the DB Inside a Loop
+
+Accumulate data first, then send a single query. This applies even when using `Promise.all` — if the number of items is dynamic, batch at the DB layer instead.
+
+```ts
+// ❌ BAD — N round trips
+for (const id of memberIds) {
+  await supabase.from('profiles').update({ active: false }).eq('id', id)
+}
+
+// ❌ ALSO BAD — parallel but still N round trips
+await Promise.all(memberIds.map((id) =>
+  supabase.from('profiles').update({ active: false }).eq('id', id)
+))
+
+// ✅ GOOD — single upsert
+await supabase
+  .from('profiles')
+  .upsert(memberIds.map((id) => ({ id, active: false })))
+```
+
+## Use Joins Instead of Multiple Queries
+
+Supabase PostgREST supports nested selects. Prefer them over fetching related data in a second query:
+
+```ts
+// ❌ BAD — 2 queries
+const { data: household } = await supabase.from('households').select('*').eq('id', id).single()
+const { data: members } = await supabase.from('profiles').select('*').eq('household_id', id)
+
+// ✅ GOOD — 1 query with join
+const { data } = await supabase
+  .from('households')
+  .select('id, name, profiles(id, email, display_name)')
+  .eq('id', id)
+  .single()
+```
+
+## Select Only the Columns You Need
+
+Never use `select('*')` in production paths. List columns explicitly to reduce payload size and prevent accidental exposure of sensitive fields.
+
+```ts
+// ❌ BAD
+.select('*')
+
+// ✅ GOOD
+.select('id, email, created_at')
+```
+
+## Batch Inserts and Upserts
+
+Build arrays in memory, then insert once:
+
+```ts
+const rows = items.map((item) => ({
+  household_id: householdId,
+  name: item.name,
+  amount: item.amount,
+}))
+
+const { error } = await supabase.from('expenses').insert(rows)
+```
+
+## Always Check Supabase Errors
+
+Destructure `{ data, error }` and return early on error. Never assume the query succeeded.
+
+```ts
+const { data, error } = await supabase.from('profiles').select('id').eq('user_id', userId).single()
+if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+```
+
+## RLS on Every Table
+
+- Enable Row Level Security on every table in the `public` schema.
+- Write policies that reflect the actual access model — do not default every table to the same policy without thinking it through.
+- Never use `user_metadata` / `raw_user_meta_data` in RLS policies — it is user-editable. Use `raw_app_meta_data` or a dedicated `profiles` table joined on `auth.uid()`.
+
+## Supabase Client Usage
+
+| Context | Client |
+|---------|--------|
+| Server components, route handlers, middleware | `createClient()` from `@/lib/supabase/server` |
+| Client components (browser) | `createClient()` from `@/lib/supabase/client` |
+| Never | `service_role` key in any frontend or public-facing code |

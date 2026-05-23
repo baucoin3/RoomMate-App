@@ -1,0 +1,236 @@
+---
+description: Complete Supabase database schema reference for the Roommate App. Consult this before writing any query, migration, or type so you never need to fetch live schema data.
+globs:
+alwaysApply: true
+---
+
+# Database Schema Reference
+
+**Project ID:** `inbexkcbkoilfpuwctkx` | **Region:** us-west-2 | **Postgres:** 17
+
+---
+
+## Enums
+
+| Enum | Values |
+|------|--------|
+| `list_owner_type` | `'user'`, `'household'` |
+
+---
+
+## Tables
+
+### `households` — RLS ✅ enabled
+
+The top-level entity. A household groups members together. Created by one authenticated user; others join via `invite_code`.
+
+| Column | Type | Nullable | Default | Notes |
+|--------|------|----------|---------|-------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `name` | text | NO | — | Display name of the household |
+| `invite_code` | text | NO | `substr(md5(random()::text), 1, 8)` | Unique 8-char code used to invite members |
+| `created_at` | timestamptz | NO | `now()` | — |
+image_url text
+
+**RLS policies:**
+- `SELECT` — user must be a member (`household_members.user_id = auth.uid()`)
+- `INSERT` — any authenticated user can create a household
+
+---
+
+### `household_members` — RLS ✅ enabled
+
+Join table linking `auth.users` to `households`. Each row is one person's membership in one household.
+
+| Column | Type | Nullable | Default | Notes |
+|--------|------|----------|---------|-------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `household_id` | uuid | NO | — | FK → `households.id` |
+| `user_id` | uuid | NO | — | FK → `auth.users.id` |
+| `nickname` | text | YES | — | Optional display name within household |
+| `is_rent_owner` | boolean | NO | `false` | Whether this member pays/collects rent |
+| `joined_at` | timestamptz | NO | `now()` | — |
+
+**RLS policies:**
+- `SELECT` — user can view members of any household they belong to
+- `INSERT` — any authenticated user can join a household
+
+---
+
+### `expense_categories` — RLS ⚠️ disabled
+
+Custom categories for expenses, scoped per household (e.g. "Groceries", "Utilities", "Rent").
+
+| Column | Type | Nullable | Default | Notes |
+|--------|------|----------|---------|-------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `household_id` | uuid | NO | — | FK → `households.id` |
+| `name` | text | NO | — | Category label |
+
+---
+
+### `category_splits` — RLS ⚠️ disabled
+
+Defines default percentage splits per `expense_category` per `household_member`. When an expense is filed under a category, these splits determine who owes what unless overridden.
+
+| Column | Type | Nullable | Default | Notes |
+|--------|------|----------|---------|-------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `category_id` | uuid | NO | — | FK → `expense_categories.id` |
+| `household_member_id` | uuid | NO | — | FK → `household_members.id` |
+| `percentage` | numeric | NO | — | CHECK 0–100. This member's share of that category |
+
+---
+
+### `expenses` — RLS ⚠️ disabled
+
+A single expense logged by one household member on behalf of the household.
+
+| Column | Type | Nullable | Default | Notes |
+|--------|------|----------|---------|-------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `household_id` | uuid | NO | — | FK → `households.id` |
+| `category_id` | uuid | YES | — | FK → `expense_categories.id` |
+| `description` | text | NO | — | What the expense was for |
+| `total_amount` | numeric | NO | — | CHECK >= 0. Total cost |
+| `paid_by_member_id` | uuid | NO | — | FK → `household_members.id` — who fronted the money |
+| `date` | date | NO | `CURRENT_DATE` | When the expense occurred |
+| `receipt_id` | uuid | YES | — | Reference to a receipt (Supabase Storage) |
+| `created_at` | timestamptz | NO | `now()` | — |
+
+---
+
+### `expense_splits` — RLS ⚠️ disabled
+
+Per-member breakdown of what each member owes for a given expense. Rows are generated when an expense is created. Mirrors `category_splits` unless overridden.
+
+| Column | Type | Nullable | Default | Notes |
+|--------|------|----------|---------|-------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `expense_id` | uuid | NO | — | FK → `expenses.id` |
+| `household_member_id` | uuid | NO | — | FK → `household_members.id` |
+| `percentage_override` | numeric | YES | — | CHECK 0–100. If set, overrides the category default split |
+| `calculated_amount` | numeric | NO | — | CHECK >= 0. Computed dollar amount this member owes |
+| `is_settled` | boolean | NO | `false` | Whether this member has paid back their share |
+
+---
+
+### `shopping_lists` — RLS ⚠️ disabled
+
+A named list that belongs to either a single user or a household. Controlled by `owner_type`.
+
+| Column | Type | Nullable | Default | Notes |
+|--------|------|----------|---------|-------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `name` | text | NO | — | List name (e.g. "Weekly Shop") |
+| `owner_type` | `list_owner_type` | NO | — | `'user'` or `'household'` |
+| `user_id` | uuid | YES | — | FK → `auth.users.id`. Set when `owner_type = 'user'` |
+| `household_id` | uuid | YES | — | FK → `households.id`. Set when `owner_type = 'household'` |
+| `created_at` | timestamptz | NO | `now()` | — |
+
+---
+
+### `shopping_list_items` — RLS ⚠️ disabled
+
+Individual line items inside a shopping list.
+
+| Column | Type | Nullable | Default | Notes |
+|--------|------|----------|---------|-------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `shopping_list_id` | uuid | NO | — | FK → `shopping_lists.id` |
+| `name` | text | NO | — | Item name |
+| `quantity` | numeric | YES | — | How many / how much |
+| `unit` | text | YES | — | Unit of measure (e.g. "kg", "pcs") |
+| `is_checked` | boolean | NO | `false` | Whether item has been checked off |
+| `created_at` | timestamptz | NO | `now()` | — |
+
+---
+
+### `recipes` — RLS ⚠️ disabled
+
+Household-scoped recipes created by a member.
+
+| Column | Type | Nullable | Default | Notes |
+|--------|------|----------|---------|-------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `household_id` | uuid | NO | — | FK → `households.id` |
+| `created_by` | uuid | NO | — | FK → `auth.users.id` |
+| `name` | text | NO | — | Recipe name |
+| `notes` | text | YES | — | Free-text notes |
+| `image_url` | text | YES | — | URL to recipe image (Supabase Storage) |
+| `created_at` | timestamptz | NO | `now()` | — |
+| `updated_at` | timestamptz | NO | `now()` | — |
+
+---
+
+### `recipe_ingredients` — RLS ⚠️ disabled
+
+Ingredients for a recipe.
+
+| Column | Type | Nullable | Default | Notes |
+|--------|------|----------|---------|-------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `recipe_id` | uuid | NO | — | FK → `recipes.id` |
+| `name` | text | NO | — | Ingredient name |
+| `quantity` | numeric | YES | — | Amount |
+| `unit` | text | YES | — | Unit (e.g. "cups", "g") |
+
+---
+
+### `recipe_steps` — RLS ⚠️ disabled
+
+Ordered steps for a recipe.
+
+| Column | Type | Nullable | Default | Notes |
+|--------|------|----------|---------|-------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `recipe_id` | uuid | NO | — | FK → `recipes.id` |
+| `step_number` | integer | NO | — | Order of the step |
+| `instruction` | text | NO | — | Step text |
+
+---
+
+### `household_items` — RLS ⚠️ disabled
+
+Reusable item catalog for a household — acts as a product/item master list. Items here can be referenced when adding shopping list entries or logging expenses, and carry a default expense category.
+
+| Column | Type | Nullable | Default | Notes |
+|--------|------|----------|---------|-------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `household_id` | uuid | NO | — | FK → `households.id` |
+| `name` | text | NO | — | Item name |
+| `default_category_id` | uuid | YES | — | FK → `expense_categories.id` |
+| `image_url` | text | YES | — | URL to item image (Supabase Storage) |
+
+---
+
+## Relationship Map
+
+```
+auth.users
+  └── household_members (user_id)
+        └── households (household_id)
+              ├── expense_categories (household_id)
+              │     ├── category_splits (category_id) ←→ household_members
+              │     └── expenses (category_id)
+              │           └── expense_splits (expense_id) ←→ household_members
+              ├── shopping_lists (household_id)
+              │     └── shopping_list_items (shopping_list_id)
+              ├── recipes (household_id)
+              │     ├── recipe_ingredients (recipe_id)
+              │     └── recipe_steps (recipe_id)
+              └── household_items (household_id) ←→ expense_categories (default_category_id)
+
+auth.users
+  └── shopping_lists (user_id)  [when owner_type = 'user']
+```
+
+---
+
+## Security Status
+
+RLS is only enabled on `households` and `household_members`. The following 10 tables are **fully exposed** to the `anon` and `authenticated` roles — anyone with the anon key can read or modify every row:
+
+`shopping_lists`, `shopping_list_items`, `recipes`, `recipe_ingredients`, `recipe_steps`, `expense_categories`, `category_splits`, `expenses`, `expense_splits`, `household_items`
+
+Before shipping any feature that touches these tables, RLS must be enabled with appropriate policies.

@@ -1,0 +1,85 @@
+---
+description: Error handling conventions for API routes, server actions, and client components
+globs: **/*.ts, **/*.tsx
+alwaysApply: false
+---
+
+# Error Handling
+
+## API Routes — Always Catch and Return Structured Errors
+
+Every route handler must wrap logic in try/catch. Never let an uncaught exception reach Next.js's default 500 handler.
+
+```ts
+// ❌ BAD
+export async function POST(request: Request) {
+  const { email } = await request.json()
+  const { data } = await supabase.from('users').select('*').eq('email', email)
+  return NextResponse.json(data)
+}
+
+// ✅ GOOD
+export async function POST(request: Request) {
+  try {
+    const { email } = await request.json()
+    const { data, error } = await supabase.from('users').select('id, email').eq('email', email).single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ user: data })
+  } catch {
+    return NextResponse.json({ error: ERRORS.INTERNAL }, { status: 500 })
+  }
+}
+```
+
+## Client — Use `getErrorMessage` from `lib/api/client.ts`
+
+Never access `err.message` or `err.response` directly in components. Use the shared helper:
+
+```ts
+import { getErrorMessage } from '@/lib/api/client'
+
+try {
+  await apiClient.post('/api/auth/login', { email, password })
+} catch (err) {
+  setError(getErrorMessage(err))
+} finally {
+  setLoading(false)
+}
+```
+
+## Validate Inputs at the Top of Every Route
+
+Return early with 400 before touching the database:
+
+```ts
+const body = await request.json()
+const { email, password } = body
+
+if (!email || !password) {
+  return NextResponse.json({ error: AUTH.ERRORS.REQUIRED_FIELDS }, { status: 400 })
+}
+```
+
+## Never Swallow Errors Silently
+
+If you must catch and continue, always log the error:
+
+```ts
+// ❌ BAD
+try { ... } catch {}
+
+// ✅ GOOD — even a console.error is better than silence during dev;
+//    replace with a proper logger (e.g. Sentry, Pino) when adding observability
+try { ... } catch (err) { console.error('[context]', err) }
+```
+
+## HTTP Status Code Conventions
+
+| Situation | Status |
+|-----------|--------|
+| Missing / invalid input | 400 |
+| Unauthenticated | 401 |
+| Forbidden (wrong user) | 403 |
+| Resource not found | 404 |
+| Conflict (duplicate) | 409 |
+| Unexpected server error | 500 |

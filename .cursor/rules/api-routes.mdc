@@ -1,0 +1,63 @@
+---
+description: Next.js App Router API route handler conventions
+globs: app/api/**/*.ts
+alwaysApply: false
+---
+
+# API Route Conventions
+
+## Structure of Every Route Handler
+
+```ts
+import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
+import { AUTH } from '@/locales/en'
+
+export async function POST(request: Request) {
+  try {
+    // 1. Parse and validate input
+    const { email, password } = await request.json()
+    if (!email || !password) {
+      return NextResponse.json({ error: AUTH.ERRORS.REQUIRED_FIELDS }, { status: 400 })
+    }
+
+    // 2. Auth check (if route is protected)
+    const supabase = createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: AUTH.ERRORS.UNAUTHORIZED }, { status: 401 })
+    }
+
+    // 3. Business logic / DB queries
+
+    // 4. Return typed success response
+    return NextResponse.json({ ... })
+  } catch {
+    return NextResponse.json({ error: ERRORS.INTERNAL }, { status: 500 })
+  }
+}
+```
+
+## Response Shape Consistency
+
+All routes return either:
+- `{ data: T }` on success, or
+- `{ error: string }` on failure
+
+Never mix shapes within a route group.
+
+## Validation Before the DB
+
+Always validate at the top before creating the Supabase client or running any query.
+
+## Authentication
+
+Use `supabase.auth.getUser()` (not `getSession()`) inside route handlers — it calls the Supabase Auth server and cannot be spoofed by a tampered cookie.
+
+## Environment Variables
+
+Never read `process.env.*` inside a route file. Import from `lib/config.ts` instead.
+
+## No Business Logic in Route Files
+
+If a handler grows beyond ~50 lines, extract the logic into a service function in `lib/services/`. Route files are thin controllers only.
