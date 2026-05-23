@@ -21,6 +21,7 @@ export interface LineItemConfig {
   customSplits: LineItemSplitRow[]
   saveAsHouseholdItem: boolean
   matchedHouseholdItemId: string | null
+  configured: boolean
 }
 
 export interface HouseholdItemSummary {

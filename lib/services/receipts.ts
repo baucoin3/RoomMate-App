@@ -1,70 +1,13 @@
-/*
- * ============================================================
- * SQL MIGRATION — run this in Supabase Studio before using
- * the receipts feature.
- * ============================================================
- *
- * -- receipts table
- * create table public.receipts (
- *   id uuid primary key default gen_random_uuid(),
- *   household_id uuid not null references public.households(id) on delete cascade,
- *   uploaded_by_member_id uuid not null references public.household_members(id) on delete cascade,
- *   image_url text not null,
- *   merchant_name text,
- *   receipt_date date,
- *   raw_total numeric check (raw_total >= 0),
- *   ai_extracted_data jsonb,
- *   created_at timestamptz not null default now()
- * );
- *
- * alter table public.receipts enable row level security;
- * create policy "members can view household receipts"
- *   on public.receipts for select
- *   using (exists (
- *     select 1 from public.household_members hm
- *     where hm.household_id = receipts.household_id
- *       and hm.user_id = auth.uid()
- *   ));
- * create policy "members can insert receipts"
- *   on public.receipts for insert
- *   with check (exists (
- *     select 1 from public.household_members hm
- *     where hm.household_id = receipts.household_id
- *       and hm.user_id = auth.uid()
- *   ));
- *
- * -- receipt_line_items table
- * create table public.receipt_line_items (
- *   id uuid primary key default gen_random_uuid(),
- *   receipt_id uuid not null references public.receipts(id) on delete cascade,
- *   description text not null,
- *   amount numeric not null check (amount >= 0),
- *   quantity numeric not null default 1
- * );
- *
- * alter table public.receipt_line_items enable row level security;
- * create policy "members can view line items via receipt"
- *   on public.receipt_line_items for select
- *   using (exists (
- *     select 1 from public.receipts r
- *     join public.household_members hm on hm.household_id = r.household_id
- *     where r.id = receipt_line_items.receipt_id
- *       and hm.user_id = auth.uid()
- *   ));
- * create policy "members can insert line items"
- *   on public.receipt_line_items for insert
- *   with check (exists (
- *     select 1 from public.receipts r
- *     join public.household_members hm on hm.household_id = r.household_id
- *     where r.id = receipt_line_items.receipt_id
- *       and hm.user_id = auth.uid()
- *   ));
- * ============================================================
- */
-
 import type { SupabaseClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
-import { ANTHROPIC_API_KEY, ANTHROPIC_MODEL } from '@/lib/config'
+import {
+  ANTHROPIC_API_KEY,
+  ANTHROPIC_MODEL,
+  RECEIPT_ANALYSIS_MAX_TOKENS,
+  RECEIPT_ANALYSIS_SYSTEM_PROMPT,
+  RECEIPT_CATEGORY_NONE,
+  RECEIPT_CATEGORY_WITH_OPTIONS,
+} from '@/lib/config'
 import type { ReceiptAnalysis, ReceiptLedgerItem, SaveReceiptPayload } from '@/lib/types/receipts'
 
 // ─── AI Analysis ──────────────────────────────────────────────────────────
@@ -86,42 +29,18 @@ export async function analyzeReceipt(
   try {
     const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY })
 
-    const prompt = `You are a receipt parser. Extract the following from this receipt image and return ONLY valid JSON matching this schema (no markdown, no explanation):
-{
-  "merchant_name": string | null,
-  "receipt_date": "YYYY-MM-DD" | null,
-  "subtotal": number | null,
-  "tax": number | null,
-  "total": number | null,
-  "suggested_category_name": string | null,
-  "line_items": [{ "description": string, "amount": number, "quantity": number }]
-}
-
-Available expense categories: ${categoryNames.join(', ')}
-
-Rules:
-- All monetary values must be numbers (not strings).
-- receipt_date must be YYYY-MM-DD format or null.
-- suggested_category_name must exactly match one of the available categories or be null.
-- If a field cannot be determined, use null.
-- line_items must be an array (empty array if none found).`
+    const categoryInstruction = categoryNames.length > 0
+      ? RECEIPT_CATEGORY_WITH_OPTIONS(categoryNames)
+      : RECEIPT_CATEGORY_NONE
 
     const message = await client.messages.create({
       model: ANTHROPIC_MODEL,
-      max_tokens: 1024,
+      max_tokens: RECEIPT_ANALYSIS_MAX_TOKENS,
+      system: `${RECEIPT_ANALYSIS_SYSTEM_PROMPT} ${categoryInstruction}`,
       messages: [
         {
           role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'url', url: imageUrl },
-            },
-            {
-              type: 'text',
-              text: prompt,
-            },
-          ],
+          content: [{ type: 'image', source: { type: 'url', url: imageUrl } }],
         },
       ],
     })
@@ -129,8 +48,16 @@ Rules:
     const textBlock = message.content.find((b) => b.type === 'text')
     if (!textBlock || textBlock.type !== 'text') return emptyResult
 
-    const parsed = JSON.parse(textBlock.text) as ReceiptAnalysis
-    return parsed
+    const input = JSON.parse(textBlock.text) as Partial<ReceiptAnalysis>
+    return {
+      merchant_name: input.merchant_name ?? null,
+      receipt_date: input.receipt_date ?? null,
+      subtotal: input.subtotal ?? null,
+      tax: input.tax ?? null,
+      total: input.total ?? null,
+      suggested_category_name: input.suggested_category_name ?? null,
+      line_items: input.line_items ?? [],
+    }
   } catch (err) {
     console.error('[analyzeReceipt]', err)
     return emptyResult
