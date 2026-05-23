@@ -7,7 +7,7 @@ import type {
   UpdateRecipePayload,
 } from '@/lib/types/recipe'
 
-/**
+/**.
  * Build a userId → display name map from household_members for a given household.
  * Falls back to a truncated user ID when no nickname is set.
  */

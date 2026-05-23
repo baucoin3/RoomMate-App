@@ -40,6 +40,35 @@ export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!
 /** Claude model used for receipt analysis */
 export const ANTHROPIC_MODEL = 'claude-sonnet-4-6'
 
+/** Max tokens allocated for a receipt analysis response */
+export const RECEIPT_ANALYSIS_MAX_TOKENS = 512
+
+/**
+ * Static portion of the receipt-analysis system prompt.
+ * The dynamic category instruction is appended at call time.
+ */
+export const RECEIPT_ANALYSIS_SYSTEM_PROMPT = `You are a receipt parser. Extract structured data from the receipt image and return ONLY valid JSON — no markdown, no code fences, no explanation.
+
+Output a single JSON object with this shape (omit any field that is not clearly visible on the receipt):
+{
+  "merchant_name": string,
+  "receipt_date": string (YYYY-MM-DD),
+  "subtotal": number,
+  "tax": number,
+  "total": number,
+  "suggested_category_name": string,
+  "line_items": [{ "description": string, "amount": number, "quantity": number }]
+}
+
+"line_items" is required; all other fields are optional.`
+
+/** Appended to RECEIPT_ANALYSIS_SYSTEM_PROMPT when expense categories are available */
+export const RECEIPT_CATEGORY_WITH_OPTIONS = (categories: string[]) =>
+  `Set "suggested_category_name" to one of: ${categories.join(', ')}. Omit the field if none fit.`
+
+/** Appended to RECEIPT_ANALYSIS_SYSTEM_PROMPT when no expense categories exist */
+export const RECEIPT_CATEGORY_NONE = 'Omit the "suggested_category_name" field.'
+
 // ─── Auth ──────────────────────────────────────────────────────────────────
 
 /** Minimum password length enforced on the client before submitting */

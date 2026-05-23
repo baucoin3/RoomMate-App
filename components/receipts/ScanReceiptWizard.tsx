@@ -32,9 +32,11 @@ interface Props {
 
 type Step = 1 | 2 | 3
 
+
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 function StepIndicator({ current }: { current: Step }) {
+
   const steps: { num: Step; label: string }[] = [
     { num: 1, label: RECEIPTS.STEPS.UPLOAD },
     { num: 2, label: RECEIPTS.STEPS.REVIEW },
@@ -98,6 +100,8 @@ function matchLineItems(
       customSplits: defaultSplits,
       saveAsHouseholdItem: false,
       matchedHouseholdItemId: matched?.id ?? null,
+      // Auto-matched items are pre-configured; unmatched need the modal
+      configured: matched !== undefined,
     }
   })
 }
@@ -106,11 +110,13 @@ function matchLineItems(
 function computeAggregateSplits(
   configs: LineItemConfig[],
   categories: Category[],
+  allMembers: Array<{ id: string }>,
   totalAmount: number,
 ): Array<{ household_member_id: string; percentage: number; calculated_amount: number }> {
   if (configs.length === 0 || totalAmount <= 0) return []
 
   const memberTotals: Record<string, number> = {}
+  const equalPct = allMembers.length > 0 ? Math.round(10000 / allMembers.length) / 100 : 0
 
   configs.forEach((config) => {
     const weight = config.amount / totalAmount
@@ -122,7 +128,7 @@ function computeAggregateSplits(
             nickname: s.nickname ?? '',
             percentage: s.percentage,
           }))
-        : []
+        : allMembers.map((m) => ({ household_member_id: m.id, nickname: '', percentage: equalPct }))
 
     splits.forEach((s) => {
       memberTotals[s.household_member_id] =
@@ -137,7 +143,7 @@ function computeAggregateSplits(
   }))
 }
 
-export default function ScanReceiptWizard({ householdId, memberId, categories, householdItems }: Props) {
+export default function ScanReceiptWizard({ householdId, memberId, categories: initialCategories, householdItems }: Props) {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -160,7 +166,8 @@ export default function ScanReceiptWizard({ householdId, memberId, categories, h
   const [tax, setTax] = useState<string>('')
   const [lineItems, setLineItems] = useState<Array<{ description: string; amount: number; quantity: number }>>([])
 
-  // Step 3 state
+  // Step 3 state — categories is mutable so newly created ones appear immediately
+  const [categories, setCategories] = useState<Category[]>(initialCategories)
   const [description, setDescription] = useState('')
   const [paidByMemberId, setPaidByMemberId] = useState(memberId)
   const [lineItemConfigs, setLineItemConfigs] = useState<LineItemConfig[]>([])
@@ -259,13 +266,15 @@ export default function ScanReceiptWizard({ householdId, memberId, categories, h
 
   const totalAmount = parseFloat(total) || 0
 
-  const unassignedCount = lineItemConfigs.filter(
-    (c) => !c.categoryId && !c.useCustomSplit,
-  ).length
+  const unassignedCount = lineItemConfigs.filter((c) => !c.configured).length
 
   function handleModalDone(updatedConfigs: LineItemConfig[]) {
     setLineItemConfigs(updatedConfigs)
     setShowItemModal(false)
+  }
+
+  function handleCategoryCreated(newCat: Category) {
+    setCategories((prev) => [...prev, newCat])
   }
 
   async function handleSave() {
@@ -279,7 +288,7 @@ export default function ScanReceiptWizard({ householdId, memberId, categories, h
 
     setSaving(true)
     try {
-      const aggregateSplits = computeAggregateSplits(lineItemConfigs, categories, totalAmount)
+      const aggregateSplits = computeAggregateSplits(lineItemConfigs, categories, allMembers, totalAmount)
 
       // Determine primary category (most-used by item count)
       const catCount: Record<string, number> = {}
@@ -610,7 +619,7 @@ export default function ScanReceiptWizard({ householdId, memberId, categories, h
               onClick={() => setShowItemModal(true)}
               className={`w-full py-3 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 ${
                 unassignedCount > 0
-                  ? 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/40 text-amber-300 hover:from-amber-500/30 hover:to-orange-500/30 hover:text-white'
+                  ? 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/40 text-amber-300 hover:from-amber-500/30 hover:to-orange-500/30 hover:text-white animate-pulse hover:animate-none'
                   : 'bg-white/5 border border-white/10 text-white/60 hover:text-white hover:border-white/20'
               }`}
             >
@@ -644,8 +653,12 @@ export default function ScanReceiptWizard({ householdId, memberId, categories, h
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving}
-              className="flex-1 py-2.5 rounded-lg bg-gradient-to-r from-indigo-500 to-violet-600 text-white font-semibold hover:from-indigo-400 hover:to-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
+              disabled={saving || unassignedCount > 0}
+              className={`flex-1 py-2.5 rounded-lg font-semibold transition-all text-sm ${
+                unassignedCount > 0
+                  ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400/60 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-indigo-500 to-violet-600 text-white hover:from-indigo-400 hover:to-violet-500 disabled:opacity-50 disabled:cursor-not-allowed'
+              }`}
             >
               {saving ? RECEIPTS.ACTIONS.SAVING : RECEIPTS.ACTIONS.SAVE}
             </button>
@@ -659,8 +672,10 @@ export default function ScanReceiptWizard({ householdId, memberId, categories, h
           configs={lineItemConfigs}
           categories={categories}
           allMembers={allMembers}
+          householdId={householdId}
           onDone={handleModalDone}
           onClose={() => setShowItemModal(false)}
+          onCategoryCreated={handleCategoryCreated}
         />
       )}
     </div>
