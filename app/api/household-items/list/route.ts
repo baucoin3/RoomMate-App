@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { AUTH, FINANCES, ERRORS } from '@/locales/en'
-import { getItemGroupsForHousehold, getMemberIdForUser } from '@/lib/services/finances'
+import { getMemberIdForUser } from '@/lib/services/finances'
+import { getHouseholdItemsForHousehold } from '@/lib/services/householdItems'
 
 export async function GET(request: Request) {
   try {
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: FINANCES.ERRORS.FORBIDDEN }, { status: 403 })
     }
 
-    const { data, error } = await getItemGroupsForHousehold(supabase, householdId)
+    const { data, error } = await getHouseholdItemsForHousehold(supabase, householdId)
     if (error) return NextResponse.json({ error }, { status: 400 })
 
     return NextResponse.json({ data })

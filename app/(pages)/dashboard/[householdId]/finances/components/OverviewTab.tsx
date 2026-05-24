@@ -87,7 +87,7 @@ export default function OverviewTab({ householdId }: OverviewTabProps) {
       {upcoming.length > 0 && (
         <div className="flex flex-col gap-3">
           <SectionHeader title={FINANCES.OVERVIEW.UPCOMING_TITLE} />
-          <UpcomingBills bills={upcoming} onConfirmed={fetchAll} />
+          <UpcomingBills bills={upcoming} householdId={householdId} onConfirmed={fetchAll} />
         </div>
       )}
 

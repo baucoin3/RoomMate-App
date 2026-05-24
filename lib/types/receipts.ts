@@ -12,6 +12,8 @@ export interface LineItemSplitRow {
   percentage: number
 }
 
+export type MatchSource = 'catalog' | 'alias' | 'ai' | 'fuzzy' | 'manual' | null
+
 export interface LineItemConfig {
   description: string
   amount: number
@@ -20,8 +22,15 @@ export interface LineItemConfig {
   useCustomSplit: boolean
   customSplits: LineItemSplitRow[]
   saveAsHouseholdItem: boolean
-  matchedHouseholdItemId: string | null
+  householdItemId: string | null
+  resolvedItemName: string | null
+  matchSource: MatchSource
+  rememberAlias: boolean
+  aiNormalizedName?: string | null
+  aiSuggestedCategoryName?: string | null
+  aiCandidates?: string[]
   configured: boolean
+  active: boolean
 }
 
 export interface HouseholdItemSummary {
@@ -42,6 +51,15 @@ export interface Receipt {
   line_items?: ReceiptLineItem[]
 }
 
+export interface ReceiptAnalysisLineItem {
+  description: string
+  amount: number
+  quantity: number
+  normalized_name?: string | null
+  suggested_category_name?: string | null
+  probable_names?: string[]
+}
+
 export interface ReceiptAnalysis {
   merchant_name: string | null
   receipt_date: string | null
@@ -49,7 +67,7 @@ export interface ReceiptAnalysis {
   tax: number | null
   total: number | null
   suggested_category_name: string | null
-  line_items: Array<{ description: string; amount: number; quantity: number }>
+  line_items: ReceiptAnalysisLineItem[]
 }
 
 export interface SaveReceiptPayload {
@@ -65,6 +83,7 @@ export interface SaveReceiptPayload {
   paid_by_member_id: string
   splits: Array<{ household_member_id: string; percentage: number; calculated_amount: number }>
   new_household_items?: Array<{ name: string; default_category_id: string | null }>
+  alias_inserts?: Array<{ household_item_id: string; display_text: string }>
 }
 
 export interface ReceiptLedgerItem extends Receipt {

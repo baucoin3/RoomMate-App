@@ -9,7 +9,29 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, RECEIPTS_BUCKET, RECEIPT_IMAGE_MAX_BYT
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import LineItemsAccordion from '@/components/receipts/LineItemsAccordion'
 import ItemSetupModal from '@/components/receipts/ItemSetupModal'
-import type { ReceiptAnalysis, SaveReceiptPayload, LineItemConfig, HouseholdItemSummary } from '@/lib/types/receipts'
+import { matchLineToHouseholdItem } from '@/lib/utils/itemMatching'
+import {
+  firstUnconfiguredIndex,
+  getLineItemSplitLines,
+  getLineItemStatus,
+  getSplitsForLineItem,
+  hasValidSplitAssignment,
+  isLineItemReadyToSave,
+  lineItemStatusLabel,
+  lineItemStatusPillClass,
+  usesDefaultEqualSplit,
+  withConfiguredFlags,
+  type SplitResolverContext,
+} from '@/lib/utils/receiptLineItems'
+import type {
+  ReceiptAnalysis,
+  ReceiptAnalysisLineItem,
+  SaveReceiptPayload,
+  LineItemConfig,
+  LineItemSplitRow,
+  MatchSource,
+} from '@/lib/types/receipts'
+import type { HouseholdItem, HouseholdItemWithAliases } from '@/lib/types/householdItems'
 
 interface CategorySplit {
   household_member_id: string
@@ -27,21 +49,21 @@ interface Props {
   householdId: string
   memberId: string
   categories: Category[]
-  householdItems: HouseholdItemSummary[]
+  householdItems: HouseholdItem[]
+  members: Array<{ id: string; name: string }>
 }
 
 type Step = 1 | 2 | 3
 
-
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 function StepIndicator({ current }: { current: Step }) {
-
   const steps: { num: Step; label: string }[] = [
     { num: 1, label: RECEIPTS.STEPS.UPLOAD },
     { num: 2, label: RECEIPTS.STEPS.REVIEW },
     { num: 3, label: RECEIPTS.STEPS.SPLITS },
   ]
+
   return (
     <div className="flex items-center gap-2 mb-8">
       {steps.map((s, idx) => (
@@ -69,72 +91,150 @@ function StepIndicator({ current }: { current: Step }) {
   )
 }
 
-/** Match line items to known household items by name (case-insensitive) */
-function matchLineItems(
-  lineItems: Array<{ description: string; amount: number; quantity: number }>,
-  householdItems: HouseholdItemSummary[],
+function categorySplitsToRows(cat: Category): LineItemSplitRow[] {
+  return cat.splits.map((s) => ({
+    household_member_id: s.household_member_id,
+    nickname: s.nickname ?? s.household_member_id.slice(0, 8),
+    percentage: s.percentage,
+  }))
+}
+
+function applyItemDefaults(
+  item: HouseholdItem,
   categories: Category[],
+  memberNicknames: Record<string, string>,
+): Pick<LineItemConfig, 'categoryId' | 'useCustomSplit' | 'customSplits'> {
+  const hasOverrides = (item.split_overrides?.length ?? 0) > 0
+  const cat = item.default_category_id
+    ? categories.find((c) => c.id === item.default_category_id) ?? null
+    : null
+
+  if (hasOverrides) {
+    return {
+      categoryId: item.default_category_id,
+      useCustomSplit: true,
+      customSplits: (item.split_overrides ?? []).map((o) => ({
+        household_member_id: o.member_id,
+        nickname: memberNicknames[o.member_id] ?? o.member_id.slice(0, 8),
+        percentage: o.percentage,
+      })),
+    }
+  }
+
+  return {
+    categoryId: item.default_category_id ?? null,
+    useCustomSplit: false,
+    customSplits: cat ? categorySplitsToRows(cat) : [],
+  }
+}
+
+function matchLineItems(
+  lineItems: ReceiptAnalysisLineItem[],
+  householdItems: HouseholdItem[],
+  categories: Category[],
+  memberNicknames: Record<string, string>,
 ): LineItemConfig[] {
+  const itemsWithAliases: HouseholdItemWithAliases[] = householdItems.map((item) => ({
+    ...item,
+    aliases: item.aliases ?? [],
+  }))
+
   return lineItems.map((item) => {
-    const matched = householdItems.find(
-      (hi) => hi.name.toLowerCase() === item.description.toLowerCase(),
-    )
-    const cat = matched?.default_category_id
-      ? categories.find((c) => c.id === matched.default_category_id) ?? null
+    const match = matchLineToHouseholdItem(item.description, itemsWithAliases)
+    const probableNames = item.probable_names ?? []
+    const aiMatchedItem = probableNames.reduce<HouseholdItem | null>((found, name) => {
+      if (found) return found
+      return householdItems.find(
+        (i) => i.name.toLowerCase() === name.toLowerCase(),
+      ) ?? null
+    }, null)
+
+    let householdItemId = match.itemId
+    let matchSource: MatchSource = null
+    let resolvedItemName: string | null = null
+    let configured = false
+
+    if (match.matchType === 'exact_name') {
+      matchSource = 'catalog'
+      resolvedItemName = householdItems.find((i) => i.id === match.itemId)?.name ?? null
+      configured = true
+    } else if (match.matchType === 'alias') {
+      matchSource = 'alias'
+      resolvedItemName = householdItems.find((i) => i.id === match.itemId)?.name ?? null
+      configured = true
+    } else if (aiMatchedItem) {
+      householdItemId = aiMatchedItem.id
+      matchSource = 'ai'
+      resolvedItemName = aiMatchedItem.name
+    } else if (match.matchType === 'fuzzy' && match.candidates.length > 0) {
+      householdItemId = match.candidates[0].itemId
+      matchSource = 'fuzzy'
+      resolvedItemName = match.candidates[0].name
+    }
+
+    const selectedItem = householdItemId
+      ? householdItems.find((i) => i.id === householdItemId) ?? null
       : null
 
-    const defaultSplits = cat
-      ? cat.splits.map((s) => ({
-          household_member_id: s.household_member_id,
-          nickname: s.nickname ?? s.household_member_id.slice(0, 8),
-          percentage: s.percentage,
-        }))
-      : []
+    const itemDefaults = selectedItem
+      ? applyItemDefaults(selectedItem, categories, memberNicknames)
+      : { categoryId: null as string | null, useCustomSplit: false, customSplits: [] as LineItemSplitRow[] }
+
+    if (!itemDefaults.categoryId && item.suggested_category_name) {
+      const cat = categories.find(
+        (c) => c.name.toLowerCase() === item.suggested_category_name!.toLowerCase(),
+      )
+      if (cat) {
+        itemDefaults.categoryId = cat.id
+        itemDefaults.customSplits = categorySplitsToRows(cat)
+      }
+    }
+
+    const rememberAlias =
+      match.matchType === 'none' ||
+      match.matchType === 'fuzzy' ||
+      matchSource === 'ai'
 
     return {
       description: item.description,
       amount: item.amount,
       quantity: item.quantity,
-      categoryId: matched?.default_category_id ?? null,
-      useCustomSplit: false,
-      customSplits: defaultSplits,
-      saveAsHouseholdItem: false,
-      matchedHouseholdItemId: matched?.id ?? null,
-      // Auto-matched items are pre-configured; unmatched need the modal
-      configured: matched !== undefined,
+      categoryId: itemDefaults.categoryId,
+      useCustomSplit: itemDefaults.useCustomSplit,
+      customSplits: itemDefaults.customSplits,
+      saveAsHouseholdItem: householdItemId === null,
+      householdItemId,
+      resolvedItemName,
+      matchSource,
+      rememberAlias,
+      aiNormalizedName: item.normalized_name ?? null,
+      aiSuggestedCategoryName: item.suggested_category_name ?? null,
+      aiCandidates: probableNames,
+      configured,
+      active: true,
     }
   })
 }
 
-/** Compute aggregate member splits from per-item configs, weighted by amount */
 function computeAggregateSplits(
   configs: LineItemConfig[],
-  categories: Category[],
-  allMembers: Array<{ id: string }>,
+  ctx: SplitResolverContext,
   totalAmount: number,
 ): Array<{ household_member_id: string; percentage: number; calculated_amount: number }> {
   if (configs.length === 0 || totalAmount <= 0) return []
 
-  const memberTotals: Record<string, number> = {}
-  const equalPct = allMembers.length > 0 ? Math.round(10000 / allMembers.length) / 100 : 0
-
-  configs.forEach((config) => {
+  const memberTotals = configs.reduce<Record<string, number>>((acc, config) => {
     const weight = config.amount / totalAmount
-    const splits = config.useCustomSplit
-      ? config.customSplits
-      : config.categoryId
-        ? (categories.find((c) => c.id === config.categoryId)?.splits ?? []).map((s) => ({
-            household_member_id: s.household_member_id,
-            nickname: s.nickname ?? '',
-            percentage: s.percentage,
-          }))
-        : allMembers.map((m) => ({ household_member_id: m.id, nickname: '', percentage: equalPct }))
-
-    splits.forEach((s) => {
-      memberTotals[s.household_member_id] =
-        (memberTotals[s.household_member_id] ?? 0) + s.percentage * weight
-    })
-  })
+    const splits = getSplitsForLineItem(config, ctx)
+    return splits.reduce(
+      (inner, s) => ({
+        ...inner,
+        [s.household_member_id]:
+          (inner[s.household_member_id] ?? 0) + s.percentage * weight,
+      }),
+      acc,
+    )
+  }, {})
 
   return Object.entries(memberTotals).map(([memberId, pct]) => ({
     household_member_id: memberId,
@@ -143,7 +243,13 @@ function computeAggregateSplits(
   }))
 }
 
-export default function ScanReceiptWizard({ householdId, memberId, categories: initialCategories, householdItems }: Props) {
+export default function ScanReceiptWizard({
+  householdId,
+  memberId,
+  categories: initialCategories,
+  householdItems,
+  members,
+}: Props) {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -153,31 +259,38 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
   const [uploading, setUploading] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
 
-  // Step 1 state
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
 
-  // Step 2 state
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
   const [merchantName, setMerchantName] = useState('')
   const [receiptDate, setReceiptDate] = useState('')
   const [total, setTotal] = useState<string>('')
   const [tax, setTax] = useState<string>('')
-  const [lineItems, setLineItems] = useState<Array<{ description: string; amount: number; quantity: number }>>([])
+  const [lineItems, setLineItems] = useState<ReceiptAnalysisLineItem[]>([])
+  const [analysisSnapshot, setAnalysisSnapshot] = useState<ReceiptAnalysis | null>(null)
 
-  // Step 3 state — categories is mutable so newly created ones appear immediately
   const [categories, setCategories] = useState<Category[]>(initialCategories)
   const [description, setDescription] = useState('')
   const [paidByMemberId, setPaidByMemberId] = useState(memberId)
   const [lineItemConfigs, setLineItemConfigs] = useState<LineItemConfig[]>([])
   const [showItemModal, setShowItemModal] = useState(false)
+  const [lastModalIndex, setLastModalIndex] = useState<number | null>(null)
   const [saveSplitsError, setSaveSplitsError] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
+  const memberNicknames = Object.fromEntries(
+    members.map((m) => [m.id, m.name]),
+  ) as Record<string, string>
+
+  const memberCount = members.length
+  const splitResolverCtx: SplitResolverContext = { categories, allMembers: members }
+
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     setFileError('')
+    setAnalysisError('')
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -214,7 +327,6 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
 
       const { data: urlData } = supabase.storage.from(RECEIPTS_BUCKET).getPublicUrl(path)
       setImageUrl(urlData.publicUrl)
-      await enterStep2(urlData.publicUrl)
     } catch (err) {
       console.error('[ScanReceiptWizard] upload', err)
       setUploadError(RECEIPTS.ERRORS.UPLOAD_FAILED)
@@ -223,12 +335,17 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
     }
   }
 
+  function handleAnalyze() {
+    if (imageUrl) enterStep2(imageUrl)
+  }
+
   function clearImage() {
     setPreviewUrl(null)
     setImageUrl(null)
     setSelectedFile(null)
     setUploadError('')
     setFileError('')
+    setAnalysisError('')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -242,14 +359,23 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
         household_id: householdId,
       })
       const analysis = res.data.data
+      setAnalysisSnapshot(analysis)
       setMerchantName(analysis.merchant_name ?? '')
       setReceiptDate(analysis.receipt_date ?? '')
       setTotal(analysis.total !== null ? String(analysis.total) : '')
       setTax(analysis.tax !== null ? String(analysis.tax) : '')
       setLineItems(analysis.line_items)
     } catch (err) {
+      console.log(err)
+      console.log('dogs')
       console.error('[ScanReceiptWizard] analyze', err)
-      setAnalysisError(RECEIPTS.ERRORS.ANALYSIS_FAILED)
+      const message = getErrorMessage(err)
+      if (message === RECEIPTS.ERRORS.NOT_A_RECEIPT) {
+        setStep(1)
+        setAnalysisError(message)
+      } else {
+        setAnalysisError(RECEIPTS.ERRORS.ANALYSIS_FAILED)
+      }
     } finally {
       setAnalyzing(false)
     }
@@ -260,16 +386,38 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
     const date = receiptDate.trim()
     const prefilled = name && date ? `${name} — ${date}` : name || date || ''
     setDescription(prefilled)
-    setLineItemConfigs(matchLineItems(lineItems, householdItems, categories))
+    setLineItemConfigs(
+      matchLineItems(lineItems, householdItems, categories, memberNicknames),
+    )
+    setLastModalIndex(null)
     setStep(3)
   }
 
   const totalAmount = parseFloat(total) || 0
+  const activeCount = lineItemConfigs.filter((c) => c.active).length
 
-  const unassignedCount = lineItemConfigs.filter((c) => !c.configured).length
+  const hasInvalidSplits = lineItemConfigs
+    .filter((c) => c.active)
+    .some((c) => !hasValidSplitAssignment(c, memberCount, splitResolverCtx))
+  const saveBlocked = hasInvalidSplits || memberCount === 0
 
-  function handleModalDone(updatedConfigs: LineItemConfig[]) {
-    setLineItemConfigs(updatedConfigs)
+  function handleConfirmLineItem(index: number) {
+    setLineItemConfigs((prev) =>
+      prev.map((c, i) => i === index ? { ...c, active: !c.active } : c),
+    )
+  }
+
+  function handleAddAllToExpense() {
+    setLineItemConfigs((prev) =>
+      prev.map((c) =>
+        c.active && hasValidSplitAssignment(c, memberCount, splitResolverCtx) ? { ...c, active: true } : c,
+      ),
+    )
+  }
+
+  function handleModalSave(updatedConfigs: LineItemConfig[], lastIndex: number) {
+    setLineItemConfigs(withConfiguredFlags(updatedConfigs, memberCount, splitResolverCtx))
+    setLastModalIndex(lastIndex)
     setShowItemModal(false)
   }
 
@@ -281,26 +429,43 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
     setSaveSplitsError('')
     setSaveError('')
 
-    if (unassignedCount > 0) {
+    if (memberCount === 0) {
+      setSaveSplitsError(RECEIPTS.ERRORS.NO_MEMBERS_FOR_SPLITS)
+      return
+    }
+
+    const configsToSave = withConfiguredFlags(
+      lineItemConfigs.filter((c) => c.active),
+      memberCount,
+      splitResolverCtx,
+    )
+    const remaining = configsToSave.filter((c) => !isLineItemReadyToSave(c, memberCount, splitResolverCtx)).length
+    if (remaining > 0) {
       setSaveSplitsError(RECEIPTS.ERRORS.SPLITS_REQUIRED)
       return
     }
 
     setSaving(true)
     try {
-      const aggregateSplits = computeAggregateSplits(lineItemConfigs, categories, allMembers, totalAmount)
+      const aggregateSplits = computeAggregateSplits(configsToSave, splitResolverCtx, totalAmount)
 
-      // Determine primary category (most-used by item count)
       const catCount: Record<string, number> = {}
-      lineItemConfigs.forEach((c) => {
+      configsToSave.forEach((c) => {
         if (c.categoryId) catCount[c.categoryId] = (catCount[c.categoryId] ?? 0) + 1
       })
       const primaryCategoryId =
         Object.entries(catCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
 
-      const newHouseholdItems = lineItemConfigs
-        .filter((c) => c.saveAsHouseholdItem && !c.matchedHouseholdItemId)
+      const newHouseholdItems = configsToSave
+        .filter((c) => c.saveAsHouseholdItem && !c.householdItemId)
         .map((c) => ({ name: c.description, default_category_id: c.categoryId }))
+
+      const aliasInserts = configsToSave
+        .filter((c) => c.rememberAlias && c.householdItemId)
+        .map((c) => ({
+          household_item_id: c.householdItemId!,
+          display_text: c.description,
+        }))
 
       const payload: SaveReceiptPayload = {
         household_id: householdId,
@@ -308,7 +473,7 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
         merchant_name: merchantName || null,
         receipt_date: receiptDate || null,
         raw_total: totalAmount,
-        ai_extracted_data: {
+        ai_extracted_data: analysisSnapshot ?? {
           merchant_name: merchantName || null,
           receipt_date: receiptDate || null,
           subtotal: null,
@@ -317,12 +482,17 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
           suggested_category_name: null,
           line_items: lineItems,
         },
-        line_items: lineItems,
+        line_items: lineItems.map(({ description: d, amount, quantity }) => ({
+          description: d,
+          amount,
+          quantity,
+        })),
         category_id: primaryCategoryId,
         description: description || merchantName || 'Receipt',
         paid_by_member_id: paidByMemberId,
         splits: aggregateSplits,
         new_household_items: newHouseholdItems.length > 0 ? newHouseholdItems : undefined,
+        alias_inserts: aliasInserts.length > 0 ? aliasInserts : undefined,
       }
 
       await apiClient.post<{ data: { receipt_id: string; expense_id: string } }>(
@@ -346,22 +516,15 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
     setTotal('')
     setTax('')
     setLineItems([])
+    setAnalysisSnapshot(null)
   }
 
-  // Collect all unique members across categories for paid-by dropdown
-  const allMembers = Array.from(
-    new Map(
-      categories
-        .flatMap((c) => c.splits)
-        .map((s) => [s.household_member_id, s.nickname ?? s.household_member_id.slice(0, 8)]),
-    ).entries(),
-  ).map(([id, name]) => ({ id, name }))
+  const modalInitialIndex = lastModalIndex ?? firstUnconfiguredIndex(lineItemConfigs)
 
   return (
     <div className="max-w-lg mx-auto px-4 py-6">
       <StepIndicator current={step} />
 
-      {/* ── Step 1 — Upload ── */}
       {step === 1 && (
         <div className="flex flex-col items-center gap-4">
           <input
@@ -373,26 +536,25 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
             onChange={handleFileSelect}
           />
 
-          {/* Preview with overlay controls */}
           {previewUrl && (
             <div className="relative w-full rounded-xl overflow-hidden border border-white/10">
-              <img src={previewUrl} alt="Receipt preview" className="w-full object-contain max-h-64" />
-              {/* Remove button — always visible */}
+              <img src={previewUrl} alt="Receipt preview" className="w-full object-contain max-h-72" />
               {!uploading && (
                 <button
                   type="button"
                   onClick={clearImage}
                   aria-label={RECEIPTS.ACTIONS.REMOVE_IMAGE}
-                  className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 text-white/80 hover:text-white hover:bg-black/80 border border-white/20 transition-all"
+                  className="absolute top-2.5 right-2.5 w-9 h-9 flex items-center justify-center rounded-full bg-black/60 backdrop-blur-sm border border-white/20 text-white/70 hover:text-white hover:bg-red-500/80 hover:border-red-400/50 hover:scale-110 transition-all duration-150"
                 >
-                  ✕
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                  </svg>
                 </button>
               )}
             </div>
           )}
 
-          {/* Upload drop zone — only when no image selected */}
-          {!uploading && !previewUrl && (
+          {!previewUrl && (
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -406,19 +568,14 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
             </button>
           )}
 
-          {/* Uploading spinner */}
-          {uploading && (
-            <div className="flex flex-col items-center gap-3 py-8">
-              <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-              <p className="text-white/60 text-sm">{RECEIPTS.ACTIONS.ANALYZE}</p>
-            </div>
-          )}
-
           {fileError && (
             <p className="text-red-400 text-sm text-center">{fileError}</p>
           )}
 
-          {/* Upload error with retry + remove */}
+          {analysisError && (
+            <p className="text-amber-400 text-sm text-center">{analysisError}</p>
+          )}
+
           {uploadError && !uploading && (
             <div className="flex flex-col items-center gap-3 w-full">
               <p className="text-red-400 text-sm text-center">{uploadError}</p>
@@ -429,9 +586,6 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
                   disabled={!selectedFile}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all text-sm font-medium"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                    <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z" clipRule="evenodd" />
-                  </svg>
                   {RECEIPTS.ACTIONS.RETRY_UPLOAD}
                 </button>
                 <button
@@ -444,10 +598,20 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
               </div>
             </div>
           )}
+
+          {previewUrl && !uploadError && (
+            <button
+              type="button"
+              onClick={handleAnalyze}
+              disabled={uploading || !imageUrl}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 text-white font-semibold text-sm hover:from-indigo-400 hover:to-violet-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+            >
+              {uploading ? RECEIPTS.ACTIONS.UPLOADING : RECEIPTS.ACTIONS.ANALYZE_RECEIPT}
+            </button>
+          )}
         </div>
       )}
 
-      {/* ── Step 2 — Review ── */}
       {step === 2 && (
         <div className="flex flex-col gap-5">
           {analyzing ? (
@@ -535,7 +699,6 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
         </div>
       )}
 
-      {/* ── Step 3 — Splits ── */}
       {step === 3 && (
         <div className="flex flex-col gap-5">
           <div>
@@ -556,7 +719,7 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
               onChange={(e) => setPaidByMemberId(e.target.value)}
               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
             >
-              {allMembers.map((m) => (
+              {members.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
                 </option>
@@ -564,47 +727,87 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
             </select>
           </div>
 
-          {/* Line items status list */}
           {lineItemConfigs.length > 0 && (
             <div>
-              <label className="block text-xs text-white/50 mb-2">{RECEIPTS.LABELS.LINE_ITEMS}</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs text-white/50">{RECEIPTS.LABELS.LINE_ITEMS}</label>
+                <button
+                  type="button"
+                  onClick={handleAddAllToExpense}
+                  className="text-xs text-white/40 hover:text-white/70 transition-colors"
+                >
+                  {RECEIPTS.ACTIONS.ADD_ALL_TO_EXPENSE}
+                </button>
+              </div>
               <div className="flex flex-col gap-1.5">
                 {lineItemConfigs.map((config, i) => {
-                  const isAuto = config.matchedHouseholdItemId !== null
-                  const isSetUp = !isAuto && (!!config.categoryId || config.useCustomSplit)
+                  const status = getLineItemStatus(config, memberCount, splitResolverCtx)
+                  const confirmed = config.active
                   const catName = config.categoryId
                     ? categories.find((c) => c.id === config.categoryId)?.name
                     : null
+                  const lineSplits = getSplitsForLineItem(config, splitResolverCtx)
+                  const splitLines = getLineItemSplitLines(lineSplits, config.amount)
+                  const isDefaultSplit = usesDefaultEqualSplit(config, memberCount)
 
                   return (
                     <div
                       key={i}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/3 border border-white/8"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleConfirmLineItem(i)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          handleConfirmLineItem(i)
+                        }
+                      }}
+                      className={`flex items-start gap-3 px-3 py-2.5 rounded-xl bg-gradient-to-r from-white/[0.04] to-white/[0.02] border transition-colors cursor-pointer border-white/5 hover:border-white/15 ${
+                        !config.active ? 'opacity-50' : ''
+                      }`}
                     >
+                      {confirmed ? (
+                        <span className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-400">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                            <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                          </svg>
+                        </span>
+                      ) : (
+                        <span className="shrink-0 w-6 h-6 rounded-full border border-dashed border-white/20" />
+                      )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white/90 truncate">{config.description}</p>
+                        <p className="text-sm text-white/75 truncate">{config.description}</p>
+                        {config.resolvedItemName && (
+                          <p className="text-xs text-indigo-300/70 mt-0.5 truncate">{config.resolvedItemName}</p>
+                        )}
                         {catName && (
-                          <p className="text-xs text-white/40 mt-0.5">{catName}</p>
+                          <p className="text-xs text-white/35 mt-0.5">{catName}</p>
                         )}
                       </div>
-                      <span className="text-xs font-mono text-white/50 shrink-0">
-                        ${config.amount.toFixed(2)}
-                      </span>
-                      <span
-                        className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${
-                          isAuto
-                            ? 'bg-green-500/15 text-green-400 border border-green-500/25'
-                            : isSetUp
-                              ? 'bg-blue-500/15 text-blue-400 border border-blue-500/25'
-                              : 'bg-amber-500/15 text-amber-400 border border-amber-500/25'
-                        }`}
-                      >
-                        {isAuto
-                          ? RECEIPTS.ITEM_SETUP.STATUS_AUTO
-                          : isSetUp
-                            ? RECEIPTS.ITEM_SETUP.STATUS_SET_UP
-                            : RECEIPTS.ITEM_SETUP.STATUS_UNASSIGNED}
-                      </span>
+                      <div className="flex flex-col items-end gap-1 shrink-0 min-w-[100px]">
+                        <span className="text-base font-mono text-emerald-400/90">
+                          ${config.amount.toFixed(2)}
+                        </span>
+                        <span
+                          className={`text-sm font-medium px-2.5 py-0.5 rounded-full ${lineItemStatusPillClass(status)}`}
+                        >
+                          {lineItemStatusLabel(status, memberCount)}
+                        </span>
+                        {(isDefaultSplit || splitLines.length > 0) && (
+                          <div className="flex flex-col items-end gap-0.5 mt-0.5">
+                            {isDefaultSplit && (
+                              <span className="text-sm text-white/35">
+                                {RECEIPTS.LABELS.EQUAL_SPLIT}
+                              </span>
+                            )}
+                            {splitLines.map((line) => (
+                              <span key={line} className="text-sm text-white/50">
+                                {line}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
@@ -612,26 +815,16 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
             </div>
           )}
 
-          {/* Configure items button */}
           {lineItemConfigs.length > 0 && (
             <button
               type="button"
               onClick={() => setShowItemModal(true)}
-              className={`w-full py-3 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 ${
-                unassignedCount > 0
-                  ? 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/40 text-amber-300 hover:from-amber-500/30 hover:to-orange-500/30 hover:text-white animate-pulse hover:animate-none'
-                  : 'bg-white/5 border border-white/10 text-white/60 hover:text-white hover:border-white/20'
-              }`}
+              className="w-full py-3 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 bg-indigo-500/10 border border-indigo-400/25 text-indigo-200 hover:bg-indigo-500/15 hover:border-indigo-400/35 hover:text-indigo-100"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                <path fillRule="evenodd" d="M8.34 1.804A1 1 0 019.32 1h1.36a1 1 0 01.98.804l.295 1.473c.497.144.971.342 1.416.587l1.25-.834a1 1 0 011.262.125l.962.962a1 1 0 01.125 1.262l-.834 1.25c.245.445.443.919.587 1.416l1.473.294a1 1 0 01.804.98v1.361a1 1 0 01-.804.98l-1.473.295a6.95 6.95 0 01-.587 1.416l.834 1.25a1 1 0 01-.125 1.262l-.962.962a1 1 0 01-1.262.125l-1.25-.834a6.953 6.953 0 01-1.416.587l-.294 1.473a1 1 0 01-.98.804H9.32a1 1 0 01-.98-.804l-.295-1.473a6.957 6.957 0 01-1.416-.587l-1.25.834a1 1 0 01-1.262-.125l-.962-.962a1 1 0 01-.125-1.262l.834-1.25a6.957 6.957 0 01-.587-1.416l-1.473-.294A1 1 0 011 10.68V9.32a1 1 0 01.804-.98l1.473-.295c.144-.497.342-.971.587-1.416l-.834-1.25a1 1 0 01.125-1.262l.962-.962A1 1 0 015.379 3.03l1.25.834a6.957 6.957 0 011.416-.587l.294-1.473zM13 10a3 3 0 11-6 0 3 3 0 016 0z" clipRule="evenodd" />
-              </svg>
               {RECEIPTS.ACTIONS.CONFIGURE_ITEMS}
-              {unassignedCount > 0 && (
-                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-500/30 text-amber-300 text-xs">
-                  {RECEIPTS.ACTIONS.CONFIGURE_ITEMS_HINT(unassignedCount)}
-                </span>
-              )}
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-white/10 text-white/50 text-xs">
+                {RECEIPTS.ACTIONS.CONFIGURE_ITEMS_COUNT(activeCount)}
+              </span>
             </button>
           )}
 
@@ -653,9 +846,9 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving || unassignedCount > 0}
+              disabled={saving || saveBlocked}
               className={`flex-1 py-2.5 rounded-lg font-semibold transition-all text-sm ${
-                unassignedCount > 0
+                saveBlocked
                   ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400/60 cursor-not-allowed'
                   : 'bg-gradient-to-r from-indigo-500 to-violet-600 text-white hover:from-indigo-400 hover:to-violet-500 disabled:opacity-50 disabled:cursor-not-allowed'
               }`}
@@ -666,15 +859,16 @@ export default function ScanReceiptWizard({ householdId, memberId, categories: i
         </div>
       )}
 
-      {/* Item setup modal */}
       {showItemModal && (
         <ItemSetupModal
           configs={lineItemConfigs}
           categories={categories}
-          allMembers={allMembers}
+          allMembers={members}
+          householdItems={householdItems}
+          splitResolverCtx={splitResolverCtx}
           householdId={householdId}
-          onDone={handleModalDone}
-          onClose={() => setShowItemModal(false)}
+          initialIndex={modalInitialIndex}
+          onSave={handleModalSave}
           onCategoryCreated={handleCategoryCreated}
         />
       )}

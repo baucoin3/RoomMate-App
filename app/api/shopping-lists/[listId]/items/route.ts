@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { AUTH, SHOPPING, ERRORS } from '@/locales/en'
-import { getItemsForList } from '@/lib/services/shopping'
+import { getItemsForList, deleteCheckedItems, clearAllItems } from '@/lib/services/shopping'
 
 interface RouteParams {
   params: { listId: string }
@@ -19,6 +19,29 @@ export async function GET(_request: Request, { params }: RouteParams) {
     if (error) return NextResponse.json({ error }, { status: 400 })
 
     return NextResponse.json({ data })
+  } catch {
+    return NextResponse.json({ error: ERRORS.INTERNAL }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: Request, { params }: RouteParams) {
+  try {
+    const supabase = createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: AUTH.ERRORS.UNAUTHORIZED }, { status: 401 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const checkedOnly = searchParams.get('checked') === 'true'
+
+    const { error } = checkedOnly
+      ? await deleteCheckedItems(supabase, params.listId)
+      : await clearAllItems(supabase, params.listId)
+
+    if (error) return NextResponse.json({ error }, { status: 400 })
+
+    return NextResponse.json({ data: null })
   } catch {
     return NextResponse.json({ error: ERRORS.INTERNAL }, { status: 500 })
   }
