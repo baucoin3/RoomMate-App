@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import type { RecurringExpense, ExpenseCategory, HouseholdMemberSummary, RecurringExpenseSplit } from '@/lib/types/finances'
 import { FINANCES } from '@/locales/en'
-import SplitEditor, { type SplitValue } from '../SplitEditor'
+import SplitEditor, { type SplitValue } from '@/components/SplitEditor'
+import { buildDefaultSplits } from '@/lib/utils/splits'
 
 interface RecurringSectionProps {
   householdId: string
@@ -14,20 +15,10 @@ interface RecurringSectionProps {
   onRecurringChanged: (updater: (r: RecurringExpense[]) => RecurringExpense[]) => void
 }
 
-function buildDefaultSplits(members: HouseholdMemberSummary[]): SplitValue[] {
-  if (members.length === 0) return []
-  const base = Math.floor((100 / members.length) * 100) / 100
-  const remainder = Math.round((100 - base * members.length) * 100) / 100
-  return members.map((m, i) => ({
-    household_member_id: m.id,
-    percentage: i === members.length - 1 ? base + remainder : base,
-  }))
-}
-
 function buildSplitsFromExpense(expense: RecurringExpense, members: HouseholdMemberSummary[]): SplitValue[] {
   return expense.splits.length > 0
     ? expense.splits.map((s) => ({ household_member_id: s.household_member_id, percentage: s.percentage, amount: s.amount }))
-    : buildDefaultSplits(members)
+    : (buildDefaultSplits(members) as SplitValue[])
 }
 
 const RECURRING_MIN_DUE_DAY = 1
@@ -178,7 +169,9 @@ function RecurringForm({ householdId, categories, members, initialExpense, onSav
   const [payerId, setPayerId] = useState(initialExpense?.paid_by_member_id ?? members[0]?.id ?? '')
   const [dueDay, setDueDay] = useState(() => initialExpense ? String(initialExpense.due_day_of_month) : getCurrentDueDay())
   const [alertDays, setAlertDays] = useState(initialExpense ? String(initialExpense.alert_days_before) : '3')
-  const [splits, setSplits] = useState(() => initialExpense ? buildSplitsFromExpense(initialExpense, members) : buildDefaultSplits(members))
+  const [splits, setSplits] = useState<SplitValue[]>(() =>
+    initialExpense ? buildSplitsFromExpense(initialExpense, members) : (buildDefaultSplits(members) as SplitValue[]),
+  )
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 

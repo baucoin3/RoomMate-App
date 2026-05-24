@@ -8,14 +8,20 @@ import {
   RECEIPT_CATEGORY_NONE,
   RECEIPT_CATEGORY_WITH_OPTIONS,
 } from '@/lib/config'
+import { upsertAliasesBatch } from '@/lib/services/householdItems'
 import type { ReceiptAnalysis, ReceiptLedgerItem, SaveReceiptPayload } from '@/lib/types/receipts'
 
-// ─── AI Analysis ──────────────────────────────────────────────────────────
+type ReceiptAnalysisRaw = Partial<ReceiptAnalysis> & { is_receipt?: boolean }
+
+export type AnalyzeReceiptResult = {
+  data: ReceiptAnalysis | null
+  notReceipt: boolean
+}
 
 export async function analyzeReceipt(
   imageUrl: string,
   categoryNames: string[],
-): Promise<ReceiptAnalysis> {
+): Promise<AnalyzeReceiptResult> {
   const emptyResult: ReceiptAnalysis = {
     merchant_name: null,
     receipt_date: null,
@@ -27,44 +33,62 @@ export async function analyzeReceipt(
   }
 
   try {
+    console.log(`\n\n[analyzeReceipt] Starting analysis for image: ${imageUrl}\n\n`)
     const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY })
 
     const categoryInstruction = categoryNames.length > 0
       ? RECEIPT_CATEGORY_WITH_OPTIONS(categoryNames)
       : RECEIPT_CATEGORY_NONE
 
-    const message = await client.messages.create({
+    const anthropicInput = {
       model: ANTHROPIC_MODEL,
       max_tokens: RECEIPT_ANALYSIS_MAX_TOKENS,
       system: `${RECEIPT_ANALYSIS_SYSTEM_PROMPT} ${categoryInstruction}`,
       messages: [
         {
-          role: 'user',
-          content: [{ type: 'image', source: { type: 'url', url: imageUrl } }],
+          role: 'user' as const,
+          content: [{ type: 'image' as const, source: { type: 'url' as const, url: imageUrl } }],
         },
       ],
-    })
+    }
+
+    console.log(
+      `\n\n\n[analyzeReceipt] Anthropic INPUT:\n${JSON.stringify(anthropicInput, null, 2)}\n\n\n`,
+    )
+
+    const message = await client.messages.create(anthropicInput)
+
+    console.log(
+      `\n\n\n[analyzeReceipt] Anthropic OUTPUT:\n${JSON.stringify(message, null, 2)}\n\n\n`,
+    )
 
     const textBlock = message.content.find((b) => b.type === 'text')
-    if (!textBlock || textBlock.type !== 'text') return emptyResult
+    if (!textBlock || textBlock.type !== 'text') {
+      return { data: emptyResult, notReceipt: false }
+    }
 
-    const input = JSON.parse(textBlock.text) as Partial<ReceiptAnalysis>
+    const input = JSON.parse(textBlock.text) as ReceiptAnalysisRaw
+    if (input.is_receipt === false) {
+      return { data: null, notReceipt: true }
+    }
+
     return {
-      merchant_name: input.merchant_name ?? null,
-      receipt_date: input.receipt_date ?? null,
-      subtotal: input.subtotal ?? null,
-      tax: input.tax ?? null,
-      total: input.total ?? null,
-      suggested_category_name: input.suggested_category_name ?? null,
-      line_items: input.line_items ?? [],
+      data: {
+        merchant_name: input.merchant_name ?? null,
+        receipt_date: input.receipt_date ?? null,
+        subtotal: input.subtotal ?? null,
+        tax: input.tax ?? null,
+        total: input.total ?? null,
+        suggested_category_name: input.suggested_category_name ?? null,
+        line_items: input.line_items ?? [],
+      },
+      notReceipt: false,
     }
   } catch (err) {
     console.error('[analyzeReceipt]', err)
-    return emptyResult
+    return { data: emptyResult, notReceipt: false }
   }
 }
-
-// ─── Save Receipt ──────────────────────────────────────────────────────────
 
 export async function saveReceipt(
   supabase: SupabaseClient,
@@ -79,7 +103,7 @@ export async function saveReceipt(
     const { error: itemError } = await supabase
       .from('household_items')
       .insert(itemRows)
-    if (itemError) console.error('[saveReceipt] household_items insert', itemError)
+    if (itemError) return { data: null, error: itemError.message }
   }
 
   const { data: receiptRow, error: receiptError } = await supabase
@@ -141,10 +165,19 @@ export async function saveReceipt(
     if (splitError) return { data: null, error: splitError.message }
   }
 
+  if (payload.alias_inserts && payload.alias_inserts.length > 0) {
+    const { error: aliasError } = await upsertAliasesBatch(
+      supabase,
+      payload.household_id,
+      payload.alias_inserts,
+    )
+    if (aliasError) {
+      console.error('[saveReceipt] alias upsert failed', aliasError)
+    }
+  }
+
   return { data: { receipt_id: receiptRow.id, expense_id: expenseRow.id }, error: null }
 }
-
-// ─── Get Receipt Ledger ────────────────────────────────────────────────────
 
 type ReceiptRow = {
   id: string
@@ -155,11 +188,14 @@ type ReceiptRow = {
   receipt_date: string | null
   raw_total: number | null
   created_at: string
-  expenses: Array<{
-    id: string
-    category_id: string | null
-    expense_categories: { name: string } | Array<{ name: string }> | null
-  }>
+  ai_extracted_data: ReceiptAnalysis | null
+}
+
+type ExpenseRow = {
+  id: string
+  receipt_id: string | null
+  category_id: string | null
+  expense_categories: { name: string } | Array<{ name: string }> | null
 }
 
 function extractCategoryName(
@@ -170,37 +206,64 @@ function extractCategoryName(
   return expenseCategories.name ?? null
 }
 
+function ledgerMerchantName(row: ReceiptRow): string | null {
+  return row.merchant_name ?? row.ai_extracted_data?.merchant_name ?? null
+}
+
+function ledgerReceiptDate(row: ReceiptRow): string | null {
+  return row.receipt_date ?? row.ai_extracted_data?.receipt_date ?? null
+}
+
 export async function getReceiptLedger(
   supabase: SupabaseClient,
   householdId: string,
 ): Promise<{ data: ReceiptLedgerItem[] | null; error: string | null }> {
-  const { data, error } = await supabase
+  const { data: receiptRows, error: receiptError } = await supabase
     .from('receipts')
-    .select(`
-      id, household_id, uploaded_by_member_id, image_url,
-      merchant_name, receipt_date, raw_total, created_at,
-      expenses(id, category_id, expense_categories(name))
-    `)
+    .select(
+      'id, household_id, uploaded_by_member_id, image_url, merchant_name, receipt_date, raw_total, created_at, ai_extracted_data',
+    )
     .eq('household_id', householdId)
     .order('created_at', { ascending: false })
 
-  if (error) return { data: null, error: error.message }
+  if (receiptError) return { data: null, error: receiptError.message }
 
-  const items: ReceiptLedgerItem[] = (data as unknown as ReceiptRow[]).map((row) => {
-    const firstExpense = row.expenses?.[0] ?? null
+  const receipts = (receiptRows ?? []) as ReceiptRow[]
+  if (receipts.length === 0) return { data: [], error: null }
+
+  const receiptIds = receipts.map((r) => r.id)
+
+  const { data: expenseRows, error: expenseError } = await supabase
+    .from('expenses')
+    .select('id, receipt_id, category_id, expense_categories(name)')
+    .in('receipt_id', receiptIds)
+
+  if (expenseError) return { data: null, error: expenseError.message }
+
+  const expenseByReceiptId = (expenseRows ?? []).reduce<Record<string, ExpenseRow>>(
+    (acc, row) => {
+      const expense = row as ExpenseRow
+      if (expense.receipt_id && !acc[expense.receipt_id]) {
+        acc[expense.receipt_id] = expense
+      }
+      return acc
+    },
+    {},
+  )
+
+  const items: ReceiptLedgerItem[] = receipts.map((row) => {
+    const expense = expenseByReceiptId[row.id] ?? null
     return {
       id: row.id,
       household_id: row.household_id,
       uploaded_by_member_id: row.uploaded_by_member_id,
       image_url: row.image_url,
-      merchant_name: row.merchant_name,
-      receipt_date: row.receipt_date,
+      merchant_name: ledgerMerchantName(row),
+      receipt_date: ledgerReceiptDate(row),
       raw_total: row.raw_total,
       created_at: row.created_at,
-      expense_id: firstExpense?.id ?? null,
-      category_name: firstExpense
-        ? extractCategoryName(firstExpense.expense_categories)
-        : null,
+      expense_id: expense?.id ?? null,
+      category_name: expense ? extractCategoryName(expense.expense_categories) : null,
     }
   })
 

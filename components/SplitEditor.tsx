@@ -1,6 +1,7 @@
 'use client'
 
 import { FINANCES } from '@/locales/en'
+import { SPLIT_TOTAL, roundPercentage } from '@/lib/utils/splits'
 import type { HouseholdMemberSummary } from '@/lib/types/finances'
 
 export interface SplitValue {
@@ -17,14 +18,8 @@ interface SplitEditorProps {
   showAmountInputs?: boolean
 }
 
-const SPLIT_TOTAL = 100
-
 function roundCurrency(value: number) {
   return Math.round(value * 100) / 100
-}
-
-function roundPercentage(value: number) {
-  return Math.round(value * 10000) / 10000
 }
 
 function clampPercentage(value: number) {
@@ -56,8 +51,6 @@ export default function SplitEditor({ members, value, onChange, totalAmount, sho
     ? value.reduce((sum, s) => sum + getAmountForMember(s.household_member_id), 0)
     : 0
 
-  // Rebalance percentages among all splits when one member's percentage changes.
-  // Returns new splits with updated percentages only — callers attach amounts.
   function balanceSplits(memberId: string, percentage: number): SplitValue[] {
     const changedPercentage = clampPercentage(roundPercentage(percentage))
     const otherSplits = value.filter((s) => s.household_member_id !== memberId)

@@ -2,9 +2,10 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { ROUTES } from '@/lib/constants/routes'
 import { getCategoriesForHousehold } from '@/lib/services/finances'
+import { getHouseholdItemsForHousehold } from '@/lib/services/householdItems'
 import ScanReceiptWizard from '@/components/receipts/ScanReceiptWizard'
 import type { ExpenseCategory } from '@/lib/types/finances'
-import type { HouseholdItemSummary } from '@/lib/types/receipts'
+import type { HouseholdItem } from '@/lib/types/householdItems'
 
 interface NewReceiptPageProps {
   params: { householdId: string }
@@ -26,14 +27,15 @@ export default async function NewReceiptPage({ params }: NewReceiptPageProps) {
 
   if (!membership) redirect(ROUTES.DASHBOARD)
 
-  const [{ data: rawCategories }, { data: rawHouseholdItems }] = await Promise.all([
-    getCategoriesForHousehold(supabase, params.householdId),
-    supabase
-      .from('household_items')
-      .select('id, name, default_category_id')
-      .eq('household_id', params.householdId)
-      .order('name', { ascending: true }),
-  ])
+  const [{ data: rawCategories }, { data: householdItems }, { data: rawMembers }] =
+    await Promise.all([
+      getCategoriesForHousehold(supabase, params.householdId),
+      getHouseholdItemsForHousehold(supabase, params.householdId),
+      supabase
+        .from('household_members')
+        .select('id, nickname')
+        .eq('household_id', params.householdId),
+    ])
 
   const categories = (rawCategories ?? []).map((cat: ExpenseCategory) => ({
     id: cat.id,
@@ -45,10 +47,11 @@ export default async function NewReceiptPage({ params }: NewReceiptPageProps) {
     })),
   }))
 
-  const householdItems: HouseholdItemSummary[] = (rawHouseholdItems ?? []).map((item) => ({
-    id: item.id,
-    name: item.name,
-    default_category_id: item.default_category_id ?? null,
+  const items: HouseholdItem[] = householdItems ?? []
+
+  const members = (rawMembers ?? []).map((m) => ({
+    id: m.id,
+    name: m.nickname ?? m.id.slice(0, 8),
   }))
 
   return (
@@ -56,7 +59,8 @@ export default async function NewReceiptPage({ params }: NewReceiptPageProps) {
       householdId={params.householdId}
       memberId={membership.id}
       categories={categories}
-      householdItems={householdItems}
+      householdItems={items}
+      members={members}
     />
   )
 }

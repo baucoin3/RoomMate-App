@@ -41,7 +41,7 @@ export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!
 export const ANTHROPIC_MODEL = 'claude-sonnet-4-6'
 
 /** Max tokens allocated for a receipt analysis response */
-export const RECEIPT_ANALYSIS_MAX_TOKENS = 512
+export const RECEIPT_ANALYSIS_MAX_TOKENS = 1800
 
 /**
  * Static portion of the receipt-analysis system prompt.
@@ -49,25 +49,38 @@ export const RECEIPT_ANALYSIS_MAX_TOKENS = 512
  */
 export const RECEIPT_ANALYSIS_SYSTEM_PROMPT = `You are a receipt parser. Extract structured data from the receipt image and return ONLY valid JSON — no markdown, no code fences, no explanation.
 
-Output a single JSON object with this shape (omit any field that is not clearly visible on the receipt):
+If the image is NOT a purchase receipt (e.g. a photo, meme, screenshot, blank image, or unrelated document), return ONLY:
+{"is_receipt": false}
+Do not include any other fields.
+
+If it IS a purchase receipt, return a JSON object with "is_receipt": true and this shape (omit any field that is not clearly visible on the receipt):
 {
+  "is_receipt": true,
   "merchant_name": string,
   "receipt_date": string (YYYY-MM-DD),
   "subtotal": number,
   "tax": number,
   "total": number,
   "suggested_category_name": string,
-  "line_items": [{ "description": string, "amount": number, "quantity": number }]
+  "line_items": [{
+    "description": string (verbatim from receipt),
+    "amount": number,
+    "quantity": number,
+    "normalized_name": string (short household-friendly name),
+    "suggested_category_name": string (from provided category list),
+    "probable_names": string[] (3–5 short household-friendly names, generic to specific)
+  }]
 }
 
-"line_items" is required; all other fields are optional.`
+When is_receipt is true, "line_items" is required; all other fields are optional.
+For each line item: "description" must stay verbatim from the receipt; "normalized_name" is best-effort household vocabulary. For each line item, return "probable_names": an array of 3–5 short, common household names for the item, from most generic to most specific (e.g. ["gum", "chewing gum", "spearmint gum"]). These are used to match against the household's item catalog — prefer simple, lowercase, common vocabulary.`
 
 /** Appended to RECEIPT_ANALYSIS_SYSTEM_PROMPT when expense categories are available */
 export const RECEIPT_CATEGORY_WITH_OPTIONS = (categories: string[]) =>
-  `Set "suggested_category_name" to one of: ${categories.join(', ')}. Omit the field if none fit.`
+  `Set receipt-level "suggested_category_name" to one of: ${categories.join(', ')}. Omit the field if none fit. For each line item, set "suggested_category_name" from the same list when applicable.`
 
 /** Appended to RECEIPT_ANALYSIS_SYSTEM_PROMPT when no expense categories exist */
-export const RECEIPT_CATEGORY_NONE = 'Omit the "suggested_category_name" field.'
+export const RECEIPT_CATEGORY_NONE = 'Omit all "suggested_category_name" fields.'
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
 

@@ -1,10 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   ExpenseCategory,
-  HouseholdItemRule,
   RecurringExpense,
   BalanceSummary,
   UpcomingBill,
+  RoommateShare,
   ActivityItem,
 } from '@/lib/types/finances'
 
@@ -60,76 +60,6 @@ export async function getCategoriesForHousehold(
   if (error) return { data: null, error: error.message }
 
   return { data: data as unknown as ExpenseCategory[], error: null }
-}
-
-// ─── Item rules ────────────────────────────────────────────────────────────
-
-export async function getItemRulesForHousehold(
-  supabase: SupabaseClient,
-  householdId: string,
-): Promise<{ data: HouseholdItemRule[] | null; error: string | null }> {
-  const { data, error } = await supabase
-    .from('household_item_rules')
-    .select(`
-      id,
-      household_id,
-      category_id,
-      name,
-      item_group,
-      split_overrides,
-      category:expense_categories ( name )
-    `)
-    .eq('household_id', householdId)
-    .order('item_group', { ascending: true, nullsFirst: false })
-    .order('name', { ascending: true })
-
-  if (error) return { data: null, error: error.message }
-
-  type Row = {
-    id: string
-    household_id: string
-    category_id: string | null
-    name: string
-    item_group: string | null
-    split_overrides: { member_id: string; percentage: number }[] | null
-    category: { name: string } | null
-  }
-
-  const rules: HouseholdItemRule[] = (data as unknown as Row[]).map((r) => ({
-    id: r.id,
-    household_id: r.household_id,
-    category_id: r.category_id,
-    category_name: r.category?.name,
-    name: r.name,
-    item_group: r.item_group,
-    split_overrides: r.split_overrides,
-  }))
-
-  return { data: rules, error: null }
-}
-
-export async function getItemGroupsForHousehold(
-  supabase: SupabaseClient,
-  householdId: string,
-): Promise<{ data: string[] | null; error: string | null }> {
-  const { data, error } = await supabase
-    .from('household_item_rules')
-    .select('item_group')
-    .eq('household_id', householdId)
-    .not('item_group', 'is', null)
-
-  if (error) return { data: null, error: error.message }
-
-  type Row = { item_group: string | null }
-  const seen = new Set<string>()
-  const groups: string[] = []
-  for (const r of data as unknown as Row[]) {
-    if (r.item_group && !seen.has(r.item_group)) {
-      seen.add(r.item_group)
-      groups.push(r.item_group)
-    }
-  }
-  return { data: groups.sort(), error: null }
 }
 
 // ─── Recurring expenses ────────────────────────────────────────────────────
@@ -342,7 +272,8 @@ export async function getUpcomingBills(
       splits:recurring_expense_splits (
         household_member_id,
         percentage,
-        amount
+        amount,
+        member:household_members ( id, nickname )
       )
     `)
     .eq('household_id', householdId)
@@ -359,7 +290,7 @@ export async function getUpcomingBills(
     alert_days_before: number
     payer: { id: string; nickname: string } | null
     category: { name: string } | null
-    splits: { household_member_id: string; percentage: number; amount: number | null }[]
+    splits: { household_member_id: string; percentage: number; amount: number | null; member: { id: string; nickname: string } | null }[]
   }
 
   const today = new Date()
@@ -383,6 +314,19 @@ export async function getUpcomingBills(
         : Math.round((Number(yourSplit.percentage) / 100) * Number(row.amount) * 100) / 100
       : 0
 
+    const youArePayer = row.paid_by_member_id === currentMemberId
+    const roommateShares: RoommateShare[] = youArePayer
+      ? row.splits
+          .filter((s) => s.household_member_id !== currentMemberId)
+          .map((s) => ({
+            member_id: s.household_member_id,
+            nickname: s.member?.nickname ?? s.household_member_id.slice(0, 8),
+            amount: s.amount !== null
+              ? Number(s.amount)
+              : Math.round((Number(s.percentage) / 100) * Number(row.amount) * 100) / 100,
+          }))
+      : []
+
     bills.push({
       recurring_expense_id: row.id,
       description: row.description,
@@ -393,7 +337,8 @@ export async function getUpcomingBills(
       alert_days_before: row.alert_days_before,
       your_share: yourShare,
       payer: row.payer ?? { id: row.paid_by_member_id, nickname: 'Unknown' },
-      you_are_payer: row.paid_by_member_id === currentMemberId,
+      you_are_payer: youArePayer,
+      roommate_shares: roommateShares,
     })
   }
 

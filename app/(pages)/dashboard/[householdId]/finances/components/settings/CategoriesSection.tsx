@@ -4,23 +4,14 @@ import { useState } from 'react'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import type { ExpenseCategory, HouseholdMemberSummary, CategorySplit } from '@/lib/types/finances'
 import { FINANCES } from '@/locales/en'
-import SplitEditor from '../SplitEditor'
+import SplitEditor from '@/components/SplitEditor'
+import { buildDefaultSplits } from '@/lib/utils/splits'
 
 interface CategoriesSectionProps {
   householdId: string
   categories: ExpenseCategory[]
   members: HouseholdMemberSummary[]
   onCategoriesChanged: (updater: (cats: ExpenseCategory[]) => ExpenseCategory[]) => void
-}
-
-function buildDefaultSplits(members: HouseholdMemberSummary[]): { household_member_id: string; percentage: number }[] {
-  if (members.length === 0) return []
-  const base = Math.floor((100 / members.length) * 100) / 100
-  const remainder = Math.round((100 - base * members.length) * 100) / 100
-  return members.map((m, i) => ({
-    household_member_id: m.id,
-    percentage: i === members.length - 1 ? base + remainder : base,
-  }))
 }
 
 interface CategoryRowProps {

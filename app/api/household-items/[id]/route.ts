@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { AUTH, FINANCES, ERRORS } from '@/locales/en'
 import { getMemberIdForUser } from '@/lib/services/finances'
+import { deleteHouseholdItem, updateHouseholdItem } from '@/lib/services/householdItems'
 
 interface RouteContext {
   params: { id: string }
@@ -10,9 +11,9 @@ interface RouteContext {
 export async function PATCH(request: Request, { params }: RouteContext) {
   try {
     const body: unknown = await request.json()
-    const { name, category_id, item_group, split_overrides } = body as {
+    const { name, default_category_id, item_group, split_overrides } = body as {
       name?: string
-      category_id?: string | null
+      default_category_id?: string | null
       item_group?: string | null
       split_overrides?: { member_id: string; percentage: number }[] | null
     }
@@ -31,7 +32,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     }
 
     const { data: existing } = await supabase
-      .from('household_item_rules')
+      .from('household_items')
       .select('id, household_id')
       .eq('id', params.id)
       .maybeSingle()
@@ -45,20 +46,14 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       return NextResponse.json({ error: FINANCES.ERRORS.FORBIDDEN }, { status: 403 })
     }
 
-    const updates: Record<string, unknown> = {}
-    if (name !== undefined) updates.name = name.trim()
-    if (category_id !== undefined) updates.category_id = category_id
-    if (item_group !== undefined) updates.item_group = item_group
-    if (split_overrides !== undefined) updates.split_overrides = split_overrides
+    const { data, error } = await updateHouseholdItem(supabase, params.id, {
+      name,
+      default_category_id,
+      item_group,
+      split_overrides,
+    })
 
-    const { data, error } = await supabase
-      .from('household_item_rules')
-      .update(updates)
-      .eq('id', params.id)
-      .select('id, household_id, category_id, name, item_group, split_overrides')
-      .single()
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    if (error) return NextResponse.json({ error }, { status: 400 })
 
     return NextResponse.json({ data })
   } catch {
@@ -75,7 +70,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
     }
 
     const { data: existing } = await supabase
-      .from('household_item_rules')
+      .from('household_items')
       .select('id, household_id')
       .eq('id', params.id)
       .maybeSingle()
@@ -89,8 +84,8 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
       return NextResponse.json({ error: FINANCES.ERRORS.FORBIDDEN }, { status: 403 })
     }
 
-    const { error } = await supabase.from('household_item_rules').delete().eq('id', params.id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    const { error } = await deleteHouseholdItem(supabase, params.id)
+    if (error) return NextResponse.json({ error }, { status: 400 })
 
     return NextResponse.json({ data: null })
   } catch {
