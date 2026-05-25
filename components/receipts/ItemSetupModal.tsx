@@ -73,8 +73,6 @@ function matchBadgeLabel(source: MatchSource): string | null {
       return RECEIPTS.ITEM_SETUP.MATCH_BADGE_ALIAS
     case 'fuzzy':
       return RECEIPTS.ITEM_SETUP.MATCH_BADGE_SUGGESTED
-    case 'ai':
-      return RECEIPTS.ITEM_SETUP.MATCH_BADGE_AI
     default:
       return null
   }
@@ -109,6 +107,7 @@ function applyHouseholdItemToConfig(
 
   return {
     ...config,
+    setupMode: 'item',
     householdItemId: item.id,
     resolvedItemName: item.name,
     matchSource,
@@ -131,9 +130,10 @@ function persistCurrentItemAtIndex(
     i === index
       ? {
           ...c,
-          configured:
-            c.householdItemId !== null &&
-            hasValidSplitAssignment(c, memberCount, ctx),
+          configured: c.setupMode === 'item'
+            ? (c.householdItemId !== null || (c.saveAsHouseholdItem && (c.resolvedItemName ?? '').length > 0)) &&
+              hasValidSplitAssignment(c, memberCount, ctx)
+            : hasValidSplitAssignment(c, memberCount, ctx),
         }
       : c,
   )
@@ -167,7 +167,6 @@ export default function ItemSetupModal({
 
   const [itemSearch, setItemSearch] = useState('')
   const [showItemDropdown, setShowItemDropdown] = useState(false)
-  const [showCategoryOverride, setShowCategoryOverride] = useState(false)
 
   const memberCount = allMembers.length
   const current = localConfigs[idx]
@@ -177,16 +176,17 @@ export default function ItemSetupModal({
     categories: localCategories,
   }
   const itemStatus = getLineItemStatus(current, memberCount, modalSplitCtx)
-  const currentValid =
-    current.householdItemId !== null &&
-    hasValidSplitAssignment(current, memberCount, modalSplitCtx)
+  const currentValid = current.setupMode === 'item'
+    ? (current.householdItemId !== null || (current.saveAsHouseholdItem && (current.resolvedItemName ?? '').length > 0)) &&
+      hasValidSplitAssignment(current, memberCount, modalSplitCtx)
+    : hasValidSplitAssignment(current, memberCount, modalSplitCtx)
+
   const displaySplits: LineItemSplitRow[] = getSplitsForLineItem(current, modalSplitCtx)
   const showNoSplitsWarning =
     current.categoryId !== null &&
     !current.useCustomSplit &&
     !categoryHasValidSplits(current.categoryId, modalSplitCtx)
 
-  const isKnownItem = current.householdItemId !== null
   const badgeLabel = matchBadgeLabel(current.matchSource)
   const showAiRow =
     (current.aiCandidates?.length ?? 0) > 0 &&
@@ -195,12 +195,33 @@ export default function ItemSetupModal({
 
   const filteredItems = useMemo(() => {
     const q = itemSearch.trim().toLowerCase()
-    if (!q) return householdItems
-    return householdItems.filter((item) => {
-      if (item.name.toLowerCase().includes(q)) return true
-      return (item.aliases ?? []).some((a) => a.display_text.toLowerCase().includes(q))
-    })
-  }, [householdItems, itemSearch])
+
+    if (q) {
+      return householdItems.filter((item) => {
+        if (item.name.toLowerCase().includes(q)) return true
+        return (item.aliases ?? []).some((a) => a.display_text.toLowerCase().includes(q))
+      })
+    }
+
+    const aiWords = (current.aiCandidates ?? [])
+      .flatMap((name) => name.toLowerCase().split(/\s+/))
+      .filter(Boolean)
+
+    if (aiWords.length > 0) {
+      const wordMatches = householdItems.filter((item) =>
+        aiWords.some((word) => item.name.toLowerCase().includes(word))
+      )
+      const rest = householdItems.filter((item) => !wordMatches.includes(item))
+      return [...wordMatches, ...rest]
+    }
+
+    return householdItems
+  }, [householdItems, itemSearch, current.aiCandidates])
+
+  const exactDropdownMatch = itemSearch.trim()
+    ? filteredItems.some((i) => i.name.toLowerCase() === itemSearch.trim().toLowerCase())
+    : false
+  const showAddNewOption = !!(itemSearch.trim() && !exactDropdownMatch)
 
   useEffect(() => {
     setSlideClass('translate-x-0 opacity-100')
@@ -208,7 +229,6 @@ export default function ItemSetupModal({
 
   useEffect(() => {
     setItemSearch(current.resolvedItemName ?? '')
-    setShowCategoryOverride(false)
   }, [idx, current.resolvedItemName])
 
   function commitCurrentAndAdvance(action: 'next' | 'done' | 'close') {
@@ -283,6 +303,15 @@ export default function ItemSetupModal({
     )
     setItemSearch(item.name)
     setShowItemDropdown(false)
+  }
+
+  function switchToItemTab() {
+    updateCurrent({ setupMode: 'item', categoryId: null, useCustomSplit: false })
+  }
+
+  function switchToCategoryTab() {
+    updateCurrent({ setupMode: 'category', householdItemId: null, resolvedItemName: null, matchSource: null })
+    setItemSearch('')
   }
 
   function handleCategoryChange(catId: string) {
@@ -403,137 +432,325 @@ export default function ItemSetupModal({
               </button>
             ) : (
               <>
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs text-white/50">
-                  {RECEIPTS.ITEM_SETUP.MATCH_ITEM_LABEL}
-                </label>
-                {badgeLabel && (
-                  <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-white/8 text-white/50 border border-white/10">
-                    {badgeLabel}
-                  </span>
-                )}
-              </div>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={itemSearch}
-                  onChange={(e) => {
-                    setItemSearch(e.target.value)
-                    setShowItemDropdown(true)
-                  }}
-                  onFocus={() => setShowItemDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowItemDropdown(false), 150)}
-                  placeholder={RECEIPTS.ITEM_SETUP.MATCH_ITEM_PLACEHOLDER}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 transition-colors"
-                />
-                {showItemDropdown && filteredItems.length > 0 && (
-                  <ul className="absolute left-0 right-0 top-full mt-1 z-20 max-h-40 overflow-y-auto rounded-xl border border-white/10 bg-[#2a2a32] shadow-xl">
-                    {filteredItems.map((item) => (
-                      <li key={item.id}>
-                        <button
-                          type="button"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => selectHouseholdItem(item, 'manual')}
-                          className="w-full text-left px-4 py-2.5 text-sm text-white/80 hover:bg-white/5"
-                        >
-                          <span className="font-medium">{item.name}</span>
-                          {(item.aliases ?? []).length > 0 && (
-                            <span className="block text-xs text-white/35 mt-0.5 truncate">
-                              {(item.aliases ?? []).map((a) => a.display_text).join(' · ')}
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+                {/* Tab pills */}
+                <div className="flex gap-1 p-1 bg-white/5 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={switchToItemTab}
+                    className={`flex-1 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                      current.setupMode === 'item'
+                        ? 'bg-indigo-500 text-white shadow-sm'
+                        : 'text-white/50 hover:text-white/80'
+                    }`}
+                  >
+                    {RECEIPTS.ITEM_SETUP.BY_ITEM_TAB}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={switchToCategoryTab}
+                    className={`flex-1 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                      current.setupMode === 'category'
+                        ? 'bg-indigo-500 text-white shadow-sm'
+                        : 'text-white/50 hover:text-white/80'
+                    }`}
+                  >
+                    {RECEIPTS.ITEM_SETUP.BY_CATEGORY_TAB}
+                  </button>
+                </div>
 
-              {showAiRow && (
-                <div className="mt-3">
-                  <p className="text-xs text-white/40 mb-1.5 flex items-center gap-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
-                      <path d="M15.98 1.804a1 1 0 00-1.96 0l-.24 1.192a1 1 0 01-.784.785l-1.192.238a1 1 0 000 1.962l1.192.238a1 1 0 01.785.785l.238 1.192a1 1 0 001.962 0l.238-1.192a1 1 0 01.785-.785l1.192-.238a1 1 0 000-1.962l-1.192-.238a1 1 0 01-.785-.785l-.238-1.192zM6.949 5.684a1 1 0 00-1.898 0l-.683 2.051a1 1 0 01-.633.633l-2.051.683a1 1 0 000 1.898l2.051.684a1 1 0 01.633.632l.683 2.051a1 1 0 001.898 0l.683-2.051a1 1 0 01.633-.633l2.051-.683a1 1 0 000-1.898l-2.051-.683a1 1 0 01-.633-.633L6.949 5.684zM13.949 13.684a1 1 0 00-1.898 0l-.184.551a1 1 0 01-.632.633l-.551.183a1 1 0 000 1.898l.551.183a1 1 0 01.633.633l.183.551a1 1 0 001.898 0l.184-.551a1 1 0 01.632-.633l.551-.183a1 1 0 000-1.898l-.551-.183a1 1 0 01-.633-.633l-.183-.551z" />
-                    </svg>
-                    {RECEIPTS.ITEM_SETUP.AI_SUGGESTION_LABEL}
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(current.aiCandidates ?? []).map((name) => {
-                      const item = householdItems.find(
-                        (i) => i.name.toLowerCase() === name.toLowerCase(),
-                      )
-                      if (item) {
-                        return (
-                          <button
-                            key={name}
-                            type="button"
-                            onClick={() => selectHouseholdItem(item, 'ai')}
-                            className="text-xs px-2.5 py-1 rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20 transition-colors"
-                          >
-                            {name}
-                          </button>
-                        )
-                      }
-                      return (
-                        <button
-                          key={name}
-                          type="button"
-                          onClick={() => {
-                            setItemSearch(name)
+                {/* By Household Item tab */}
+                {current.setupMode === 'item' && (
+                  <div className="flex flex-col gap-4">
+                    {/* Match dropdown */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs text-white/50">
+                          {RECEIPTS.ITEM_SETUP.MATCH_ITEM_LABEL}
+                        </label>
+                        {badgeLabel && (
+                          <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-white/8 text-white/50 border border-white/10">
+                            {badgeLabel}
+                          </span>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={itemSearch}
+                          onChange={(e) => {
+                            setItemSearch(e.target.value)
                             setShowItemDropdown(true)
                           }}
-                          className="text-xs px-2.5 py-1 rounded-full border border-white/10 bg-white/5 text-white/50 opacity-60 cursor-default transition-colors"
-                        >
-                          {name}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
+                          onFocus={() => setShowItemDropdown(true)}
+                          onBlur={() => setTimeout(() => setShowItemDropdown(false), 150)}
+                          placeholder={RECEIPTS.ITEM_SETUP.MATCH_ITEM_PLACEHOLDER}
+                          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 transition-colors"
+                        />
+                        {showItemDropdown && (filteredItems.length > 0 || showAddNewOption) && (
+                          <ul className="absolute left-0 right-0 top-full mt-1 z-20 max-h-40 overflow-y-auto rounded-xl border border-white/10 bg-[#2a2a32] shadow-xl">
+                            {filteredItems.map((item) => (
+                              <li key={item.id}>
+                                <button
+                                  type="button"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => selectHouseholdItem(item, 'manual')}
+                                  className="w-full text-left px-4 py-2.5 text-sm text-white/80 hover:bg-white/5"
+                                >
+                                  <span className="font-medium">{item.name}</span>
+                                  {(item.aliases ?? []).length > 0 && (
+                                    <span className="block text-xs text-white/35 mt-0.5 truncate">
+                                      {(item.aliases ?? []).map((a) => a.display_text).join(' · ')}
+                                    </span>
+                                  )}
+                                </button>
+                              </li>
+                            ))}
+                            {showAddNewOption && (
+                              <li>
+                                <button
+                                  type="button"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    const name = itemSearch.trim()
+                                    updateCurrent({ resolvedItemName: name, saveAsHouseholdItem: true })
+                                    setShowItemDropdown(false)
+                                  }}
+                                  className="w-full text-left px-4 py-2.5 text-sm text-indigo-300/80 hover:bg-white/5 border-t border-white/5"
+                                >
+                                  {RECEIPTS.ITEM_SETUP.ADD_AS_NEW_ITEM(itemSearch.trim())}
+                                </button>
+                              </li>
+                            )}
+                          </ul>
+                        )}
+                      </div>
 
-            {isKnownItem ? (
-              <>
-                <div>
-                  <p className="text-xs text-white/50 mb-1">{RECEIPTS.ITEM_SETUP.DERIVED_CATEGORY}</p>
-                  <p className="text-sm text-white/80">
-                    {current.categoryId
-                      ? localCategories.find((c) => c.id === current.categoryId)?.name ?? '—'
-                      : RECEIPTS.ITEM_SETUP.CATEGORY_PLACEHOLDER}
-                  </p>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-white/50">{RECEIPTS.ITEM_SETUP.SPLIT_PREVIEW}</span>
-                    <button
-                      type="button"
-                      onClick={() => setShowCategoryOverride((v) => !v)}
-                      className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-                    >
-                      {RECEIPTS.ITEM_SETUP.OVERRIDE_CATEGORY}
-                    </button>
-                  </div>
-                  <div className="flex flex-col gap-2 bg-white/3 rounded-xl p-3 border border-white/8">
-                    {displaySplits.map((s) => {
-                      const dollar = ((s.percentage / 100) * current.amount).toFixed(2)
-                      return (
-                        <div key={s.household_member_id} className="flex items-center gap-3">
-                          <span className="flex-1 text-sm text-white/80">{s.nickname}</span>
-                          <span className="text-sm text-white/50 font-mono">{s.percentage}%</span>
-                          <span className="text-sm font-mono text-emerald-400/80 w-14 text-right">
-                            ${dollar}
-                          </span>
+                      {/* AI chips */}
+                      {showAiRow && (
+                        <div className="mt-3">
+                          <p className="text-xs text-white/40 mb-1.5 flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                              <path d="M15.98 1.804a1 1 0 00-1.96 0l-.24 1.192a1 1 0 01-.784.785l-1.192.238a1 1 0 000 1.962l1.192.238a1 1 0 01.785.785l.238 1.192a1 1 0 001.962 0l.238-1.192a1 1 0 01.785-.785l1.192-.238a1 1 0 000-1.962l-1.192-.238a1 1 0 01-.785-.785l-.238-1.192zM6.949 5.684a1 1 0 00-1.898 0l-.683 2.051a1 1 0 01-.633.633l-2.051.683a1 1 0 000 1.898l2.051.684a1 1 0 01.633.632l.683 2.051a1 1 0 001.898 0l.683-2.051a1 1 0 01.633-.633l2.051-.683a1 1 0 000-1.898l-2.051-.683a1 1 0 01-.633-.633L6.949 5.684zM13.949 13.684a1 1 0 00-1.898 0l-.184.551a1 1 0 01-.632.633l-.551.183a1 1 0 000 1.898l.551.183a1 1 0 01.633.633l.183.551a1 1 0 001.898 0l.184-.551a1 1 0 01.632-.633l.551-.183a1 1 0 000-1.898l-.551-.183a1 1 0 01-.633-.633l-.183-.551z" />
+                            </svg>
+                            {RECEIPTS.ITEM_SETUP.AI_SUGGESTION_LABEL}
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(current.aiCandidates ?? []).map((name) => {
+                              const item = householdItems.find(
+                                (i) => i.name.toLowerCase() === name.toLowerCase(),
+                              )
+                              if (item) {
+                                return (
+                                  <button
+                                    key={name}
+                                    type="button"
+                                    onClick={() => selectHouseholdItem(item, 'ai')}
+                                    className="text-xs px-2.5 py-1 rounded-full border border-violet-400 bg-violet-500/20 text-violet-100 font-semibold hover:bg-violet-500/35 transition-colors"
+                                  >
+                                    {name}
+                                  </button>
+                                )
+                              }
+                              return (
+                                <button
+                                  key={name}
+                                  type="button"
+                                  onClick={() => {
+                                    setItemSearch(name)
+                                    updateCurrent({
+                                      resolvedItemName: name,
+                                      saveAsHouseholdItem: true,
+                                      householdItemId: null,
+                                      matchSource: 'ai',
+                                    })
+                                    setShowItemDropdown(true)
+                                  }}
+                                  className="text-xs px-2.5 py-1 rounded-full border border-violet-400 bg-violet-500/20 text-violet-100 font-semibold hover:bg-violet-500/35 transition-colors"
+                                >
+                                  {name}
+                                </button>
+                              )
+                            })}
+                          </div>
                         </div>
-                      )
-                    })}
-                  </div>
-                </div>
+                      )}
+                    </div>
 
-                {showCategoryOverride && (
-                  <div className="flex flex-col gap-4 pt-1 border-t border-white/8">
+                    {/* No match: save as household item toggle */}
+                    {current.householdItemId === null && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => updateCurrent({ saveAsHouseholdItem: !current.saveAsHouseholdItem })}
+                          className={`flex items-start gap-3 w-full p-3.5 rounded-xl border transition-all text-left ${
+                            current.saveAsHouseholdItem
+                              ? 'border-indigo-500/50 bg-indigo-500/10'
+                              : 'border-white/10 bg-white/3 hover:border-white/20'
+                          }`}
+                        >
+                          <div
+                            className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${
+                              current.saveAsHouseholdItem
+                                ? 'border-indigo-400 bg-indigo-500'
+                                : 'border-white/30'
+                            }`}
+                          >
+                            {current.saveAsHouseholdItem && (
+                              <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 text-white" fill="currentColor">
+                                <path d="M1 4l2.5 2.5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                              </svg>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-white/90">
+                              {RECEIPTS.ITEM_SETUP.SAVE_AS_ITEM_LABEL}
+                            </p>
+                            <p className="text-xs text-white/40 mt-0.5">
+                              {RECEIPTS.ITEM_SETUP.SAVE_AS_ITEM_HINT}
+                            </p>
+                          </div>
+                        </button>
+
+                        {/* Split preview when creating new item */}
+                        {current.saveAsHouseholdItem && (
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs text-white/50">
+                                {RECEIPTS.ITEM_SETUP.SPLIT_PREVIEW}
+                                {!current.categoryId && !current.useCustomSplit && (
+                                  <span className="ml-1.5 text-white/30">({RECEIPTS.ITEM_SETUP.EQUAL_SPLIT_DEFAULT})</span>
+                                )}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateCurrent({
+                                    useCustomSplit: !current.useCustomSplit,
+                                    customSplits: current.customSplits.length > 0
+                                      ? current.customSplits
+                                      : getSplitsForLineItem(current, modalSplitCtx),
+                                  })
+                                }
+                                className={`text-xs px-2.5 py-1 rounded-full border transition-all ${
+                                  current.useCustomSplit
+                                    ? 'border-violet-500 text-violet-300 bg-violet-500/10'
+                                    : 'border-white/10 text-white/40 hover:text-white/70 hover:border-white/20'
+                                }`}
+                              >
+                                {RECEIPTS.ITEM_SETUP.CUSTOM_SPLIT_LABEL}
+                              </button>
+                            </div>
+                            <div className="flex flex-col gap-2 bg-white/3 rounded-xl p-3 border border-white/8">
+                              {current.useCustomSplit ? (
+                                <SplitEditor
+                                  members={allMembers.map((m) => ({ id: m.id, nickname: m.name }))}
+                                  value={current.customSplits.map((s) => ({
+                                    household_member_id: s.household_member_id,
+                                    percentage: s.percentage,
+                                    amount: (s.percentage / 100) * current.amount,
+                                  }))}
+                                  onChange={(splits) =>
+                                    updateCurrent({
+                                      customSplits: splits.map((s) => ({
+                                        household_member_id: s.household_member_id,
+                                        nickname: allMembers.find((m) => m.id === s.household_member_id)?.name ?? '',
+                                        percentage: s.percentage,
+                                      })),
+                                    })
+                                  }
+                                  totalAmount={current.amount}
+                                  showAmountInputs
+                                />
+                              ) : (
+                                displaySplits.map((s) => {
+                                  const dollar = ((s.percentage / 100) * current.amount).toFixed(2)
+                                  return (
+                                    <div key={s.household_member_id} className="flex items-center gap-3">
+                                      <span className="flex-1 text-sm text-white/80">{s.nickname}</span>
+                                      <span className="text-sm text-white/50 font-mono">{s.percentage}%</span>
+                                      <span className="text-sm font-mono text-emerald-400/80 w-14 text-right">
+                                        ${dollar}
+                                      </span>
+                                    </div>
+                                  )
+                                })
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* Matched to existing item */}
+                    {current.householdItemId !== null && (
+                      <>
+                        <p className="text-xs text-white/40 px-1">
+                          {RECEIPTS.ITEM_SETUP.ALREADY_IN_CATALOG}
+                        </p>
+
+                        <div>
+                          <p className="text-xs text-white/50 mb-1">{RECEIPTS.ITEM_SETUP.DERIVED_CATEGORY}</p>
+                          <p className="text-sm text-white/80">
+                            {current.categoryId
+                              ? localCategories.find((c) => c.id === current.categoryId)?.name ?? '—'
+                              : RECEIPTS.ITEM_SETUP.CATEGORY_PLACEHOLDER}
+                          </p>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs text-white/50">{RECEIPTS.ITEM_SETUP.SPLIT_PREVIEW}</span>
+                          </div>
+                          <div className="flex flex-col gap-2 bg-white/3 rounded-xl p-3 border border-white/8">
+                            {displaySplits.map((s) => {
+                              const dollar = ((s.percentage / 100) * current.amount).toFixed(2)
+                              return (
+                                <div key={s.household_member_id} className="flex items-center gap-3">
+                                  <span className="flex-1 text-sm text-white/80">{s.nickname}</span>
+                                  <span className="text-sm text-white/50 font-mono">{s.percentage}%</span>
+                                  <span className="text-sm font-mono text-emerald-400/80 w-14 text-right">
+                                    ${dollar}
+                                  </span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => updateCurrent({ rememberAlias: !current.rememberAlias })}
+                          className={`flex items-start gap-3 w-full p-3.5 rounded-xl border transition-all text-left ${
+                            current.rememberAlias
+                              ? 'border-indigo-500/50 bg-indigo-500/10'
+                              : 'border-white/10 bg-white/3 hover:border-white/20'
+                          }`}
+                        >
+                          <div
+                            className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${
+                              current.rememberAlias
+                                ? 'border-indigo-400 bg-indigo-500'
+                                : 'border-white/30'
+                            }`}
+                          >
+                            {current.rememberAlias && (
+                              <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 text-white" fill="currentColor">
+                                <path d="M1 4l2.5 2.5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                              </svg>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-white/90">{rememberLabel}</p>
+                          </div>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* By Category tab */}
+                {current.setupMode === 'category' && (
+                  <div className="flex flex-col gap-4">
                     <div>
                       <label className="block text-xs text-white/50 mb-1.5">
                         {RECEIPTS.ITEM_SETUP.CATEGORY_LABEL}
@@ -548,11 +765,58 @@ export default function ItemSetupModal({
                           <option key={c.id} value={c.id}>{c.name}</option>
                         ))}
                       </select>
+
+                      {!showAddCat ? (
+                        <button
+                          type="button"
+                          onClick={() => { setShowAddCat(true); setAddCatError('') }}
+                          className="mt-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                        >
+                          {RECEIPTS.ITEM_SETUP.ADD_CATEGORY_LABEL}
+                        </button>
+                      ) : (
+                        <div className="mt-2 flex flex-col gap-1.5">
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={newCatName}
+                              onChange={(e) => setNewCatName(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory() }}
+                              placeholder={RECEIPTS.ITEM_SETUP.ADD_CATEGORY_PLACEHOLDER}
+                              autoFocus
+                              className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 transition-colors"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleAddCategory}
+                              disabled={addingCat || !newCatName.trim()}
+                              className="px-3 py-2 rounded-lg bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all text-sm font-medium shrink-0"
+                            >
+                              {addingCat ? RECEIPTS.ITEM_SETUP.ADDING_CATEGORY : RECEIPTS.ITEM_SETUP.ADD_CATEGORY_SUBMIT}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setShowAddCat(false); setNewCatName(''); setAddCatError('') }}
+                              className="px-2 py-2 rounded-lg border border-white/10 text-white/40 hover:text-white/70 transition-colors text-sm"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          {addCatError && (
+                            <p className="text-red-400 text-xs" role="alert">{addCatError}</p>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-white/50">{RECEIPTS.ITEM_SETUP.SPLIT_PREVIEW}</span>
+                        <span className="text-xs text-white/50">
+                          {RECEIPTS.ITEM_SETUP.SPLIT_PREVIEW}
+                          {!current.categoryId && !current.useCustomSplit && (
+                            <span className="ml-1.5 text-white/30">({RECEIPTS.ITEM_SETUP.EQUAL_SPLIT_DEFAULT})</span>
+                          )}
+                        </span>
                         <button
                           type="button"
                           onClick={() =>
@@ -572,6 +836,7 @@ export default function ItemSetupModal({
                           {RECEIPTS.ITEM_SETUP.CUSTOM_SPLIT_LABEL}
                         </button>
                       </div>
+
                       <div className="flex flex-col gap-2 bg-white/3 rounded-xl p-3 border border-white/8">
                         {current.useCustomSplit ? (
                           <SplitEditor
@@ -614,205 +879,6 @@ export default function ItemSetupModal({
                     </div>
                   </div>
                 )}
-              </>
-            ) : (
-              <>
-                <div>
-                  <label className="block text-xs text-white/50 mb-1.5">
-                    {RECEIPTS.ITEM_SETUP.CATEGORY_LABEL}
-                  </label>
-                  <select
-                    value={current.categoryId ?? ''}
-                    onChange={(e) => handleCategoryChange(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-indigo-500 transition-colors"
-                  >
-                    <option value="">{RECEIPTS.ITEM_SETUP.CATEGORY_PLACEHOLDER}</option>
-                    {localCategories.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-
-                  {!showAddCat ? (
-                    <button
-                      type="button"
-                      onClick={() => { setShowAddCat(true); setAddCatError('') }}
-                      className="mt-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-                    >
-                      {RECEIPTS.ITEM_SETUP.ADD_CATEGORY_LABEL}
-                    </button>
-                  ) : (
-                    <div className="mt-2 flex flex-col gap-1.5">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={newCatName}
-                          onChange={(e) => setNewCatName(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory() }}
-                          placeholder={RECEIPTS.ITEM_SETUP.ADD_CATEGORY_PLACEHOLDER}
-                          autoFocus
-                          className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 transition-colors"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleAddCategory}
-                          disabled={addingCat || !newCatName.trim()}
-                          className="px-3 py-2 rounded-lg bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/30 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all text-sm font-medium shrink-0"
-                        >
-                          {addingCat ? RECEIPTS.ITEM_SETUP.ADDING_CATEGORY : RECEIPTS.ITEM_SETUP.ADD_CATEGORY_SUBMIT}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setShowAddCat(false); setNewCatName(''); setAddCatError('') }}
-                          className="px-2 py-2 rounded-lg border border-white/10 text-white/40 hover:text-white/70 transition-colors text-sm"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                      {addCatError && (
-                        <p className="text-red-400 text-xs" role="alert">{addCatError}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-white/50">
-                      {RECEIPTS.ITEM_SETUP.SPLIT_PREVIEW}
-                      {!current.categoryId && !current.useCustomSplit && (
-                        <span className="ml-1.5 text-white/30">({RECEIPTS.ITEM_SETUP.EQUAL_SPLIT_DEFAULT})</span>
-                      )}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateCurrent({
-                          useCustomSplit: !current.useCustomSplit,
-                          customSplits: current.customSplits.length > 0
-                            ? current.customSplits
-                            : getSplitsForLineItem(current, modalSplitCtx),
-                        })
-                      }
-                      className={`text-xs px-2.5 py-1 rounded-full border transition-all ${
-                        current.useCustomSplit
-                          ? 'border-violet-500 text-violet-300 bg-violet-500/10'
-                          : 'border-white/10 text-white/40 hover:text-white/70 hover:border-white/20'
-                      }`}
-                    >
-                      {RECEIPTS.ITEM_SETUP.CUSTOM_SPLIT_LABEL}
-                    </button>
-                  </div>
-
-                  <div className="flex flex-col gap-2 bg-white/3 rounded-xl p-3 border border-white/8">
-                    {current.useCustomSplit ? (
-                      <SplitEditor
-                        members={allMembers.map((m) => ({ id: m.id, nickname: m.name }))}
-                        value={current.customSplits.map((s) => ({
-                          household_member_id: s.household_member_id,
-                          percentage: s.percentage,
-                          amount: (s.percentage / 100) * current.amount,
-                        }))}
-                        onChange={(splits) =>
-                          updateCurrent({
-                            customSplits: splits.map((s) => ({
-                              household_member_id: s.household_member_id,
-                              nickname: allMembers.find((m) => m.id === s.household_member_id)?.name ?? '',
-                              percentage: s.percentage,
-                            })),
-                          })
-                        }
-                        totalAmount={current.amount}
-                        showAmountInputs
-                      />
-                    ) : (
-                      displaySplits.map((s) => {
-                        const dollar = ((s.percentage / 100) * current.amount).toFixed(2)
-                        return (
-                          <div key={s.household_member_id} className="flex items-center gap-3">
-                            <span className="flex-1 text-sm text-white/80">{s.nickname}</span>
-                            <span className="text-sm text-white/50 font-mono">{s.percentage}%</span>
-                            <span className="text-sm font-mono text-emerald-400/80 w-14 text-right">
-                              ${dollar}
-                            </span>
-                          </div>
-                        )
-                      })
-                    )}
-                    {showNoSplitsWarning && (
-                      <p className="text-xs text-amber-400">{RECEIPTS.ITEM_SETUP.NO_SPLITS}</p>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {isKnownItem ? (
-              <p className="text-xs text-white/40 px-1">
-                {RECEIPTS.ITEM_SETUP.ALREADY_IN_CATALOG}
-              </p>
-            ) : (
-              <button
-                type="button"
-                onClick={() => updateCurrent({ saveAsHouseholdItem: !current.saveAsHouseholdItem })}
-                className={`flex items-start gap-3 w-full p-3.5 rounded-xl border transition-all text-left ${
-                  current.saveAsHouseholdItem
-                    ? 'border-indigo-500/50 bg-indigo-500/10'
-                    : 'border-white/10 bg-white/3 hover:border-white/20'
-                }`}
-              >
-                <div
-                  className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${
-                    current.saveAsHouseholdItem
-                      ? 'border-indigo-400 bg-indigo-500'
-                      : 'border-white/30'
-                  }`}
-                >
-                  {current.saveAsHouseholdItem && (
-                    <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 text-white" fill="currentColor">
-                      <path d="M1 4l2.5 2.5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                    </svg>
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-white/90">
-                    {RECEIPTS.ITEM_SETUP.SAVE_AS_ITEM_LABEL}
-                  </p>
-                  <p className="text-xs text-white/40 mt-0.5">
-                    {RECEIPTS.ITEM_SETUP.SAVE_AS_ITEM_HINT}
-                  </p>
-                </div>
-              </button>
-            )}
-
-            {current.householdItemId && (
-              <button
-                type="button"
-                onClick={() => updateCurrent({ rememberAlias: !current.rememberAlias })}
-                className={`flex items-start gap-3 w-full p-3.5 rounded-xl border transition-all text-left ${
-                  current.rememberAlias
-                    ? 'border-indigo-500/50 bg-indigo-500/10'
-                    : 'border-white/10 bg-white/3 hover:border-white/20'
-                }`}
-              >
-                <div
-                  className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${
-                    current.rememberAlias
-                      ? 'border-indigo-400 bg-indigo-500'
-                      : 'border-white/30'
-                  }`}
-                >
-                  {current.rememberAlias && (
-                    <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 text-white" fill="currentColor">
-                      <path d="M1 4l2.5 2.5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                    </svg>
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-white/90">{rememberLabel}</p>
-                </div>
-              </button>
-            )}
-
               </>
             )}
           </div>

@@ -14,10 +14,13 @@ export interface LineItemSplitRow {
 
 export type MatchSource = 'catalog' | 'alias' | 'ai' | 'fuzzy' | 'manual' | null
 
+export type SetupMode = 'item' | 'category'
+
 export interface LineItemConfig {
   description: string
   amount: number
   quantity: number
+  setupMode: SetupMode
   categoryId: string | null
   useCustomSplit: boolean
   customSplits: LineItemSplitRow[]
@@ -82,7 +85,12 @@ export interface SaveReceiptPayload {
   description: string
   paid_by_member_id: string
   splits: Array<{ household_member_id: string; percentage: number; calculated_amount: number }>
-  new_household_items?: Array<{ name: string; default_category_id: string | null }>
+  new_household_items?: Array<{
+    name: string
+    default_category_id: string | null
+    split_overrides?: { member_id: string; percentage: number }[] | null
+    initial_aliases?: string[]
+  }>
   alias_inserts?: Array<{ household_item_id: string; display_text: string }>
 }
 

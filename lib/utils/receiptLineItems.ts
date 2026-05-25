@@ -1,8 +1,8 @@
 import { RECEIPTS } from '@/locales/en'
 import { splitsSumTo100 } from '@/lib/utils/splits'
-import type { LineItemConfig, LineItemSplitRow, MatchSource } from '@/lib/types/receipts'
+import type { LineItemConfig, LineItemSplitRow } from '@/lib/types/receipts'
 
-export type LineItemStatus = 'matched' | 'ai' | 'setup' | 'auto' | 'default_split' | 'set_up' | 'unassigned'
+export type LineItemStatus = 'matched' | 'setup' | 'auto' | 'default_split' | 'set_up' | 'unassigned'
 
 export interface SplitResolverContext {
   categories: Array<{
@@ -105,31 +105,16 @@ export function isLineItemReadyToSave(
   return isLineItemConfirmed(c) && hasValidSplitAssignment(c, memberCount, ctx)
 }
 
-function isAutoMatchSource(source: MatchSource): boolean {
-  return source === 'catalog' || source === 'alias'
-}
-
 export function getLineItemStatus(
   c: LineItemConfig,
   memberCount: number,
   ctx?: SplitResolverContext,
 ): LineItemStatus {
-  if (c.householdItemId !== null && isAutoMatchSource(c.matchSource)) {
-    if (ctx && !hasValidSplitAssignment(c, memberCount, ctx)) return 'setup'
-    return 'matched'
-  }
-
-  if (c.matchSource === 'ai' || c.matchSource === 'fuzzy' || (c.aiCandidates?.length ?? 0) > 0) {
-    return 'ai'
-  }
-
   if (c.householdItemId !== null) {
     if (ctx && !hasValidSplitAssignment(c, memberCount, ctx)) return 'setup'
     return 'matched'
   }
 
-  if (usesDefaultEqualSplit(c, memberCount)) return 'setup'
-  if (hasValidSplitAssignment(c, memberCount, ctx)) return 'setup'
   return 'setup'
 }
 
@@ -137,8 +122,6 @@ export function lineItemStatusLabel(status: LineItemStatus, memberCount = 0): st
   switch (status) {
     case 'matched':
       return RECEIPTS.ITEM_SETUP.STATUS_MATCHED
-    case 'ai':
-      return RECEIPTS.ITEM_SETUP.STATUS_AI
     case 'setup':
       return RECEIPTS.ITEM_SETUP.STATUS_SETUP
     case 'auto':
@@ -159,12 +142,9 @@ export function lineItemStatusPillClass(status: LineItemStatus): string {
     case 'matched':
     case 'auto':
       return 'bg-green-500/12 text-green-400/90 border border-green-500/20'
-    case 'ai':
-      return 'bg-violet-500/12 text-violet-300/90 border border-violet-500/20'
     case 'setup':
     case 'default_split':
     case 'set_up':
-      return 'bg-amber-500/12 text-amber-400/90 border border-amber-500/20'
     case 'unassigned':
       return 'bg-amber-500/12 text-amber-400/90 border border-amber-500/20'
   }
@@ -205,10 +185,11 @@ export function withConfiguredFlags(
 ): LineItemConfig[] {
   return configs.map((c) => ({
     ...c,
-    configured:
-      c.householdItemId !== null &&
-      c.configured &&
-      hasValidSplitAssignment(c, memberCount, ctx),
+    configured: c.setupMode === 'item'
+      ? (c.householdItemId !== null || (c.saveAsHouseholdItem && (c.resolvedItemName ?? '').length > 0)) &&
+        c.configured &&
+        hasValidSplitAssignment(c, memberCount, ctx)
+      : c.configured && hasValidSplitAssignment(c, memberCount, ctx),
   }))
 }
 

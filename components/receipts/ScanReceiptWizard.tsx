@@ -195,10 +195,13 @@ function matchLineItems(
       match.matchType === 'fuzzy' ||
       matchSource === 'ai'
 
+    const setupMode = matchSource !== null || probableNames.length > 0 ? 'item' : 'category'
+
     return {
       description: item.description,
       amount: item.amount,
       quantity: item.quantity,
+      setupMode,
       categoryId: itemDefaults.categoryId,
       useCustomSplit: itemDefaults.useCustomSplit,
       customSplits: itemDefaults.customSplits,
@@ -458,7 +461,19 @@ export default function ScanReceiptWizard({
 
       const newHouseholdItems = configsToSave
         .filter((c) => c.saveAsHouseholdItem && !c.householdItemId)
-        .map((c) => ({ name: c.description, default_category_id: c.categoryId }))
+        .map((c) => ({
+          name: c.resolvedItemName ?? c.description,
+          default_category_id: c.categoryId,
+          split_overrides: c.useCustomSplit && c.customSplits.length > 0
+            ? c.customSplits.map((s) => ({ member_id: s.household_member_id, percentage: s.percentage }))
+            : null,
+          initial_aliases: [
+            c.description,
+            ...(c.aiCandidates ?? []).filter(
+              (a) => a.toLowerCase() !== (c.resolvedItemName ?? c.description).toLowerCase()
+            ),
+          ].filter(Boolean),
+        }))
 
       const aliasInserts = configsToSave
         .filter((c) => c.rememberAlias && c.householdItemId)

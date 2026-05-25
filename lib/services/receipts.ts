@@ -99,11 +99,27 @@ export async function saveReceipt(
       household_id: payload.household_id,
       name: item.name,
       default_category_id: item.default_category_id,
+      split_overrides: item.split_overrides ?? null,
     }))
-    const { error: itemError } = await supabase
+    const { data: insertedItems, error: itemError } = await supabase
       .from('household_items')
       .insert(itemRows)
+      .select('id, name')
     if (itemError) return { data: null, error: itemError.message }
+
+    const aliasesToInsert = (insertedItems ?? []).flatMap((insertedItem, i) => {
+      const original = payload.new_household_items![i]
+      return (original.initial_aliases ?? []).map((alias) => ({
+        household_item_id: insertedItem.id as string,
+        display_text: alias,
+      }))
+    })
+    if (aliasesToInsert.length > 0) {
+      const { error: aliasError } = await upsertAliasesBatch(supabase, payload.household_id, aliasesToInsert)
+      if (aliasError) {
+        console.error('[saveReceipt] initial alias insert failed', aliasError)
+      }
+    }
   }
 
   const { data: receiptRow, error: receiptError } = await supabase

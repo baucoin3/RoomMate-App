@@ -502,16 +502,16 @@ export const RECEIPTS = {
     MATCH_BADGE_CATALOG: 'Catalog',
     MATCH_BADGE_ALIAS: 'Saved alias',
     MATCH_BADGE_SUGGESTED: 'Suggested',
-    MATCH_BADGE_AI: 'AI',
     REMEMBER_ALIAS_LABEL: 'Remember this receipt text',
     REMEMBER_ALIAS_LABEL_FN: (raw: string, canonical: string) =>
       `Remember "${raw.length > 28 ? `${raw.slice(0, 28)}…` : raw}" as ${canonical}`,
     STATUS_MATCHED: 'Matched',
-    STATUS_AI: 'AI',
     STATUS_SETUP: 'Setup',
-    OVERRIDE_CATEGORY: 'Override category',
     DERIVED_CATEGORY: 'Category',
     AI_CHIP: (name: string) => name,
+    BY_ITEM_TAB: 'By Household Item',
+    BY_CATEGORY_TAB: 'By Category',
+    ADD_AS_NEW_ITEM: (name: string) => `+ Add "${name}" as new item`,
   },
 } as const
 
