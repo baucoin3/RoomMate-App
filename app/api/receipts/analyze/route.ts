@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { analyzeReceipt } from '@/lib/services/receipts'
-import { RECEIPTS } from '@/locales/en'
-import { ERRORS } from '@/locales/en'
+import { RECEIPTS, ERRORS } from '@/locales/en'
 
 export async function POST(request: Request) {
   try {
@@ -43,9 +42,13 @@ export async function POST(request: Request) {
     }
 
     const categoryNames = (categories ?? []).map((c: { id: string; name: string }) => c.name)
-    const analysis = await analyzeReceipt(image_url, categoryNames)
+    const { data, notReceipt } = await analyzeReceipt(image_url, categoryNames)
 
-    return NextResponse.json({ data: analysis })
+    if (notReceipt) {
+      return NextResponse.json({ error: RECEIPTS.ERRORS.NOT_A_RECEIPT }, { status: 422 })
+    }
+
+    return NextResponse.json({ data })
   } catch {
     return NextResponse.json({ error: ERRORS.INTERNAL }, { status: 500 })
   }

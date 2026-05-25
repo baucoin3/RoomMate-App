@@ -50,6 +50,37 @@ export async function getListsForHousehold(
 }
 
 /**
+ * Delete all checked items from a list in a single query.
+ */
+export async function deleteCheckedItems(
+  supabase: SupabaseClient,
+  listId: string,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('shopping_list_items')
+    .delete()
+    .eq('shopping_list_id', listId)
+    .eq('is_checked', true)
+
+  return { error: error?.message ?? null }
+}
+
+/**
+ * Delete all items from a list in a single query.
+ */
+export async function clearAllItems(
+  supabase: SupabaseClient,
+  listId: string,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('shopping_list_items')
+    .delete()
+    .eq('shopping_list_id', listId)
+
+  return { error: error?.message ?? null }
+}
+
+/**
  * Fetch all items for a given list, ordered by is_checked ASC, created_at ASC.
  */
 export async function getItemsForList(

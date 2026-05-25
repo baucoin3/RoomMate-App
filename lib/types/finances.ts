@@ -20,16 +20,6 @@ export interface ExpenseCategory {
   splits?: CategorySplit[]
 }
 
-export interface HouseholdItemRule {
-  id: string
-  household_id: string
-  category_id: string | null
-  category_name?: string
-  name: string
-  item_group: string | null
-  split_overrides: { member_id: string; percentage: number }[] | null
-}
-
 export interface RecurringExpenseSplit {
   id: string
   recurring_expense_id: string
@@ -67,6 +57,12 @@ export interface BalanceSummary {
   owed_to_you: BalanceEntry[]
 }
 
+export interface RoommateShare {
+  member_id: string
+  nickname: string
+  amount: number
+}
+
 export interface UpcomingBill {
   recurring_expense_id: string
   description: string
@@ -78,6 +74,8 @@ export interface UpcomingBill {
   your_share: number
   payer: HouseholdMemberSummary
   you_are_payer: boolean
+  /** Populated only when you_are_payer — one entry per non-payer roommate. */
+  roommate_shares: RoommateShare[]
 }
 
 export interface ActivityItem {

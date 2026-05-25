@@ -27,7 +27,13 @@ export default async function ReceiptsPage({ params }: ReceiptsPageProps) {
 
   if (!membership) redirect(ROUTES.DASHBOARD)
 
-  const { data: receipts } = await getReceiptLedger(supabase, params.householdId)
+  const { data: receipts, error: ledgerError } = await getReceiptLedger(
+    supabase,
+    params.householdId,
+  )
+  if (ledgerError) {
+    console.error('[ReceiptsPage] getReceiptLedger', ledgerError)
+  }
   const items = receipts ?? []
 
   return (
@@ -41,6 +47,12 @@ export default async function ReceiptsPage({ params }: ReceiptsPageProps) {
           + {RECEIPTS.SCAN_TITLE}
         </Link>
       </div>
+
+      {ledgerError && (
+        <p className="text-red-400 text-sm mb-4" role="alert">
+          {RECEIPTS.ERRORS.LOAD}
+        </p>
+      )}
 
       {items.length > 0 && <LedgerHeader receipts={items} />}
 

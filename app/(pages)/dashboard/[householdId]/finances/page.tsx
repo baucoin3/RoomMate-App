@@ -22,7 +22,6 @@ export default function FinancesPage() {
         const res = await apiClient.get<{ data: HouseholdMemberSummary[] }>(
           `/api/households/${householdId}/members`,
         )
-        console.log(`IN GET FINANCES MEMBERES = ${JSON.stringify(res.data.data)}`)
         setMembers(res.data.data ?? [])
       } catch (err) {
         setMembersError(getErrorMessage(err))

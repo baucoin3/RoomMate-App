@@ -54,6 +54,9 @@ export default function ListCard({
   const [isOpen, setIsOpen] = useState(true)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [isDeletingChecked, setIsDeletingChecked] = useState(false)
+  const [isClearing, setIsClearing] = useState(false)
+  const [bulkError, setBulkError] = useState('')
 
   const items = list.items ?? []
   const uncheckedCount = items.filter((i) => !i.is_checked).length
@@ -91,6 +94,33 @@ export default function ListCard({
 
   function handleItemDeleted(itemId: string) {
     onItemsChanged((prev) => prev.filter((i) => i.id !== itemId))
+  }
+
+  async function handleDeleteChecked() {
+    setIsDeletingChecked(true)
+    setBulkError('')
+    try {
+      await apiClient.delete(`/api/shopping-lists/${list.id}/items?checked=true`)
+      onItemsChanged((prev) => prev.filter((i) => !i.is_checked))
+    } catch (err) {
+      setBulkError(getErrorMessage(err))
+    } finally {
+      setIsDeletingChecked(false)
+    }
+  }
+
+  async function handleClearAll() {
+    if (!confirm(SHOPPING.ACTIONS.CLEAR_ALL_CONFIRM(list.name))) return
+    setIsClearing(true)
+    setBulkError('')
+    try {
+      await apiClient.delete(`/api/shopping-lists/${list.id}/items`)
+      onItemsChanged(() => [])
+    } catch (err) {
+      setBulkError(getErrorMessage(err))
+    } finally {
+      setIsClearing(false)
+    }
   }
 
   return (
@@ -136,9 +166,27 @@ export default function ListCard({
           />
 
           {/* List actions footer */}
-          <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-white/5">
-            {deleteError && (
-              <span className="text-xs text-red-400 flex-1">{deleteError}</span>
+          <div className="flex items-center justify-end gap-3 px-4 py-2 border-t border-white/5 flex-wrap">
+            {(deleteError || bulkError) && (
+              <span className="text-xs text-red-400 flex-1">{deleteError || bulkError}</span>
+            )}
+            {items.some((i) => i.is_checked) && (
+              <button
+                onClick={handleDeleteChecked}
+                disabled={isDeletingChecked}
+                className="text-xs text-white/30 hover:text-amber-400 transition-colors disabled:opacity-50"
+              >
+                {SHOPPING.ACTIONS.DELETE_CHECKED}
+              </button>
+            )}
+            {items.length > 0 && (
+              <button
+                onClick={handleClearAll}
+                disabled={isClearing}
+                className="text-xs text-white/30 hover:text-red-400 transition-colors disabled:opacity-50"
+              >
+                {SHOPPING.ACTIONS.CLEAR_ALL}
+              </button>
             )}
             <button
               onClick={handleDeleteList}

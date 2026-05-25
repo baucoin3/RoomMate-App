@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
-import type { ExpenseCategory, HouseholdItemRule, RecurringExpense, HouseholdMemberSummary } from '@/lib/types/finances'
+import type { ExpenseCategory, RecurringExpense, HouseholdMemberSummary } from '@/lib/types/finances'
+import type { HouseholdItem } from '@/lib/types/householdItems'
 import { FINANCES } from '@/locales/en'
 import CategoriesSection from './settings/CategoriesSection'
 import ItemRulesSection from './settings/ItemRulesSection'
@@ -58,7 +59,7 @@ function AccordionSection({ title, defaultOpen = false, children }: AccordionSec
 
 export default function SettingsTab({ householdId, members }: SettingsTabProps) {
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
-  const [itemRules, setItemRules] = useState<HouseholdItemRule[]>([])
+  const [householdItems, setHouseholdItems] = useState<HouseholdItem[]>([])
   const [recurring, setRecurring] = useState<RecurringExpense[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -70,14 +71,14 @@ export default function SettingsTab({ householdId, members }: SettingsTabProps) 
       setLoading(true)
       setError('')
       try {
-        const [catsRes, rulesRes, recurringRes] = await Promise.all([
+        const [catsRes, itemsRes, recurringRes] = await Promise.all([
           apiClient.get<{ data: ExpenseCategory[] }>(`/api/finances/categories?householdId=${householdId}`),
-          apiClient.get<{ data: HouseholdItemRule[] }>(`/api/finances/item-rules?householdId=${householdId}`),
+          apiClient.get<{ data: HouseholdItem[] }>(`/api/household-items/list?householdId=${householdId}`),
           apiClient.get<{ data: RecurringExpense[] }>(`/api/finances/recurring?householdId=${householdId}`),
         ])
         if (!cancelled) {
           setCategories(catsRes.data.data ?? [])
-          setItemRules(rulesRes.data.data ?? [])
+          setHouseholdItems(itemsRes.data.data ?? [])
           setRecurring(recurringRes.data.data ?? [])
         }
       } catch (err) {
@@ -129,13 +130,13 @@ export default function SettingsTab({ householdId, members }: SettingsTabProps) 
         />
       </AccordionSection>
 
-      <AccordionSection title={FINANCES.SETTINGS.ITEM_RULES_TITLE}>
+      <AccordionSection title={FINANCES.SETTINGS.HOUSEHOLD_ITEMS_TITLE}>
         <ItemRulesSection
           householdId={householdId}
-          rules={itemRules}
+          items={householdItems}
           categories={categories}
           members={members}
-          onRulesChanged={(updater) => setItemRules(updater)}
+          onItemsChanged={(updater) => setHouseholdItems(updater)}
         />
       </AccordionSection>
     </div>

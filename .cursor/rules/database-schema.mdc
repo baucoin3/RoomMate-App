@@ -192,15 +192,37 @@ Ordered steps for a recipe.
 
 ### `household_items` — RLS ⚠️ disabled
 
-Reusable item catalog for a household — acts as a product/item master list. Items here can be referenced when adding shopping list entries or logging expenses, and carry a default expense category.
+Reusable item catalog for a household — acts as a product/item master list. Items here can be referenced when adding shopping list entries or logging expenses, and carry a default expense category. Merged from legacy `household_item_rules`.
 
 | Column | Type | Nullable | Default | Notes |
 |--------|------|----------|---------|-------|
 | `id` | uuid | NO | `gen_random_uuid()` | PK |
 | `household_id` | uuid | NO | — | FK → `households.id` |
-| `name` | text | NO | — | Item name |
+| `name` | text | NO | — | Item name (canonical) |
 | `default_category_id` | uuid | YES | — | FK → `expense_categories.id` |
+| `item_group` | text | YES | — | e.g. "produce", "snacks" |
+| `split_overrides` | jsonb | YES | — | `[{ "member_id": uuid, "percentage": number }]` |
 | `image_url` | text | YES | — | URL to item image (Supabase Storage) |
+| `created_at` | timestamptz | NO | `now()` | — |
+
+---
+
+### `household_item_aliases` — RLS ✅ enabled
+
+Normalized receipt text mapped to canonical household items. Aliases grow when users confirm mappings during receipt save.
+
+| Column | Type | Nullable | Default | Notes |
+|--------|------|----------|---------|-------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `household_item_id` | uuid | NO | — | FK → `household_items.id` ON DELETE CASCADE |
+| `household_id` | uuid | NO | — | FK → `households.id` (denormalized for RLS) |
+| `alias_text` | text | NO | — | Normalized text for matching |
+| `display_text` | text | NO | — | Original receipt string for display |
+| `created_at` | timestamptz | NO | `now()` | — |
+
+**Unique constraint:** `(household_id, alias_text)`
+
+**RLS policies:** household members can SELECT/INSERT/UPDATE/DELETE aliases for their household.
 
 ---
 
@@ -220,6 +242,7 @@ auth.users
               │     ├── recipe_ingredients (recipe_id)
               │     └── recipe_steps (recipe_id)
               └── household_items (household_id) ←→ expense_categories (default_category_id)
+                    └── household_item_aliases (household_item_id)
 
 auth.users
   └── shopping_lists (user_id)  [when owner_type = 'user']
@@ -233,4 +256,4 @@ RLS is only enabled on `households` and `household_members`. The following 10 ta
 
 `shopping_lists`, `shopping_list_items`, `recipes`, `recipe_ingredients`, `recipe_steps`, `expense_categories`, `category_splits`, `expenses`, `expense_splits`, `household_items`
 
-Before shipping any feature that touches these tables, RLS must be enabled with appropriate policies.
+`household_item_aliases` has RLS enabled. Before shipping, enable RLS on all remaining tables above.
