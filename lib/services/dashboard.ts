@@ -18,9 +18,11 @@ async function fetchRentStatus(
         description,
         total_amount,
         date,
+        paid_by_member_id,
         expense_splits (
           id,
           household_member_id,
+          calculated_amount,
           is_settled,
           household_members ( id, nickname, user_id )
         ),
@@ -43,6 +45,7 @@ async function fetchRentStatus(
     const splits = (expense.expense_splits ?? []) as unknown as Array<{
       id: string
       household_member_id: string
+      calculated_amount: number | null
       is_settled: boolean
       household_members: { id: string; nickname: string | null; user_id: string } | null
     }>
@@ -50,9 +53,8 @@ async function fetchRentStatus(
     const members = splits.map((split) => ({
       memberId: split.household_member_id,
       memberName: split.household_members?.nickname ?? 'Unknown',
-      hasPaid: split.household_member_id === currentMemberId
-        ? split.is_settled
-        : split.is_settled,
+      hasPaid: split.is_settled,
+      shareAmount: Number(split.calculated_amount ?? 0),
     }))
 
     return {
@@ -64,6 +66,8 @@ async function fetchRentStatus(
       members,
       paidCount: members.filter((m) => m.hasPaid).length,
       totalCount: members.length,
+      paidByMemberId: (expense as unknown as { paid_by_member_id: string }).paid_by_member_id,
+      currentMemberId,
     }
   } catch (err) {
     console.error('[dashboard/rentStatus]', err)

@@ -17,22 +17,6 @@ interface HouseholdShellProps {
   userName: string | null
 }
 
-function BellIcon({ className }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className} aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-    </svg>
-  )
-}
-
-function DotsIcon({ className }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className} aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
-    </svg>
-  )
-}
-
 function getGreeting(): string {
   const hour = new Date().getHours()
   if (hour < 12) return 'Good morning'
@@ -54,13 +38,17 @@ export default function HouseholdShell({
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
   const menuRef = useRef<HTMLDivElement>(null)
+  const mobileMenuRef = useRef<HTMLDivElement>(null)
 
   const displayName = userName ?? userEmail
   const greeting = `${getGreeting()}, ${userName ?? userEmail.split('@')[0]}`
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      if (
+        !menuRef.current?.contains(event.target as Node) &&
+        !mobileMenuRef.current?.contains(event.target as Node)
+      ) {
         setMenuOpen(false)
       }
     }
@@ -165,22 +153,40 @@ export default function HouseholdShell({
             <h1 className="text-base font-semibold text-white leading-tight">{householdName}</h1>
             <p className="text-xs text-white/50 mt-0.5">{greeting}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="relative md:hidden" ref={mobileMenuRef}>
             <button
-              aria-label="Notifications"
-              className="flex items-center justify-center w-8 h-8 rounded-full text-white/50 hover:text-white hover:bg-white/5 transition-colors"
+              onClick={() => setMenuOpen((prev) => !prev)}
+              aria-label={NAV.PROFILE_ARIA}
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-500 text-white text-xs font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
             >
-              <BellIcon className="h-5 w-5" />
+              {userInitial}
             </button>
-            <div className="relative" ref={undefined}>
-              <button
-                aria-label="More options"
-                onClick={() => setMenuOpen((prev) => !prev)}
-                className="flex items-center justify-center w-8 h-8 rounded-full text-white/50 hover:text-white hover:bg-white/5 transition-colors md:hidden"
+            {menuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-white/10 bg-[#1c1c24] py-1 shadow-xl z-50"
               >
-                <DotsIcon className="h-5 w-5" />
-              </button>
-            </div>
+                <div className="border-b border-white/10 px-4 py-2">
+                  <p className="truncate text-xs font-medium text-white">{displayName}</p>
+                  {userName && (
+                    <p className="truncate text-xs text-white/50">{userEmail}</p>
+                  )}
+                </div>
+                {signOutError && (
+                  <p className="px-4 py-2 text-xs text-red-400">{signOutError}</p>
+                )}
+                <button
+                  role="menuitem"
+                  onClick={handleSignOut}
+                  disabled={signingOut}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-60"
+                >
+                  {signingOut ? NAV.ACTIONS.SIGNING_OUT : NAV.ACTIONS.SIGN_OUT}
+                </button>
+              </div>
+            )}
           </div>
         </header>
 

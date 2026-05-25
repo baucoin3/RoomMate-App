@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
-import type { BalanceSummary, UpcomingBill, ActivityItem } from '@/lib/types/finances'
+import type { OweSummary, ActivityItem, RecurringBillOverview } from '@/lib/types/finances'
 import { FINANCES } from '@/locales/en'
-import BalanceCard from './overview/BalanceCard'
-import UpcomingBills from './overview/UpcomingBills'
+import OwedToYouSection from './overview/OwedToYouSection'
+import YouOweSection from './overview/YouOweSection'
+import RecurringBillsSection from './overview/RecurringBillsSection'
 import RecentActivity from './overview/RecentActivity'
 
 interface OverviewTabProps {
@@ -19,8 +20,8 @@ function SectionHeader({ title }: { title: string }) {
 }
 
 export default function OverviewTab({ householdId }: OverviewTabProps) {
-  const [balances, setBalances] = useState<BalanceSummary | null>(null)
-  const [upcoming, setUpcoming] = useState<UpcomingBill[]>([])
+  const [oweSummary, setOweSummary] = useState<OweSummary | null>(null)
+  const [recurringBills, setRecurringBills] = useState<RecurringBillOverview[]>([])
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -29,13 +30,15 @@ export default function OverviewTab({ householdId }: OverviewTabProps) {
     setLoading(true)
     setError('')
     try {
-      const [balancesRes, upcomingRes, activityRes] = await Promise.all([
-        apiClient.get<{ data: BalanceSummary }>(`/api/finances/balances?householdId=${householdId}`),
-        apiClient.get<{ data: UpcomingBill[] }>(`/api/finances/upcoming?householdId=${householdId}`),
+      const [balancesRes, recurringRes, activityRes] = await Promise.all([
+        apiClient.get<{ data: OweSummary }>(`/api/finances/balances?householdId=${householdId}`),
+        apiClient.get<{ data: RecurringBillOverview[] }>(
+          `/api/finances/recurring/overview?householdId=${householdId}`,
+        ),
         apiClient.get<{ data: ActivityItem[] }>(`/api/finances/activity?householdId=${householdId}`),
       ])
-      setBalances(balancesRes.data.data)
-      setUpcoming(upcomingRes.data.data ?? [])
+      setOweSummary(balancesRes.data.data)
+      setRecurringBills(recurringRes.data.data ?? [])
       setActivity(activityRes.data.data ?? [])
     } catch (err) {
       setError(getErrorMessage(err))
@@ -71,27 +74,33 @@ export default function OverviewTab({ householdId }: OverviewTabProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Balances */}
+      {/* Owed to You */}
       <div className="flex flex-col gap-3">
-        <SectionHeader title={FINANCES.OVERVIEW.BALANCES_TITLE} />
-        {balances && (
-          <BalanceCard
-            summary={balances}
-            householdId={householdId}
-            onSettled={fetchAll}
-          />
-        )}
+        <SectionHeader title={FINANCES.OVERVIEW.OWED_TO_YOU_TITLE} />
+        <OwedToYouSection
+          items={oweSummary?.owed_to_you ?? []}
+          householdId={householdId}
+          onSettled={fetchAll}
+        />
       </div>
 
-      {/* Upcoming bills — only show if there are any */}
-      {upcoming.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <SectionHeader title={FINANCES.OVERVIEW.UPCOMING_TITLE} />
-          <UpcomingBills bills={upcoming} householdId={householdId} onConfirmed={fetchAll} />
-        </div>
-      )}
+      {/* You Owe */}
+      <div className="flex flex-col gap-3">
+        <SectionHeader title={FINANCES.OVERVIEW.YOU_OWE_TITLE} />
+        <YouOweSection items={oweSummary?.you_owe ?? []} />
+      </div>
 
-      {/* Recent activity */}
+      {/* Recurring Bills */}
+      <div className="flex flex-col gap-3">
+        <SectionHeader title={FINANCES.OVERVIEW.RECURRING_BILLS_TITLE} />
+        <RecurringBillsSection
+          bills={recurringBills}
+          householdId={householdId}
+          onChanged={fetchAll}
+        />
+      </div>
+
+      {/* Recent Activity */}
       <div className="flex flex-col gap-3">
         <SectionHeader title={FINANCES.OVERVIEW.ACTIVITY_TITLE} />
         <RecentActivity items={activity} />

@@ -1,29 +1,42 @@
-import type { RentStatus } from '@/lib/types/dashboard'
+import type { RentStatus, RentMember } from '@/lib/types/dashboard'
 import { HOUSEHOLD_DASHBOARD } from '@/locales/en'
 
 interface RentStatusCardProps {
   data: RentStatus | null
 }
 
-function MemberAvatar({ name, hasPaid }: { name: string; hasPaid: boolean }) {
-  return (
-    <div
-      title={`${name}: ${hasPaid ? 'paid' : 'unpaid'}`}
-      className={`flex items-center justify-center h-7 w-7 rounded-full text-[10px] font-bold ring-2 ${
-        hasPaid
-          ? 'bg-emerald-500/20 text-emerald-400 ring-emerald-500/30'
-          : 'bg-white/10 text-white/50 ring-white/10'
-      }`}
-    >
-      {name.charAt(0).toUpperCase()}
-    </div>
-  )
-}
-
 function getDaysColor(days: number): string {
   if (days <= 3) return 'text-red-400'
   if (days <= 14) return 'text-amber-400'
   return 'text-white'
+}
+
+function getMemberRow(
+  member: RentMember,
+  paidByMemberId: string,
+  currentMemberId: string,
+  payerName: string,
+): string {
+  const amount = member.shareAmount.toFixed(2)
+  const isViewer = member.memberId === currentMemberId
+  const viewerPaid = paidByMemberId === currentMemberId
+
+  if (viewerPaid) {
+    if (isViewer) return ''
+    return member.hasPaid
+      ? HOUSEHOLD_DASHBOARD.RENT.OWES_YOU_PAID(member.memberName)
+      : HOUSEHOLD_DASHBOARD.RENT.OWES_YOU(member.memberName, amount)
+  }
+
+  if (isViewer) {
+    return member.hasPaid
+      ? HOUSEHOLD_DASHBOARD.RENT.YOU_HAVE_PAID
+      : HOUSEHOLD_DASHBOARD.RENT.YOU_OWE(payerName, amount)
+  }
+
+  return member.hasPaid
+    ? HOUSEHOLD_DASHBOARD.RENT.THIRD_PARTY_PAID(member.memberName)
+    : HOUSEHOLD_DASHBOARD.RENT.THIRD_PARTY_OWES(member.memberName, payerName, amount)
 }
 
 export default function RentStatusCard({ data }: RentStatusCardProps) {
@@ -43,6 +56,13 @@ export default function RentStatusCard({ data }: RentStatusCardProps) {
     data.daysUntilDue === 1
       ? HOUSEHOLD_DASHBOARD.RENT.DAY_UNTIL_DUE
       : HOUSEHOLD_DASHBOARD.RENT.DAYS_UNTIL_DUE(data.daysUntilDue)
+
+  const payerMember = data.members.find((m) => m.memberId === data.paidByMemberId)
+  const payerName = payerMember?.memberName ?? 'Unknown'
+
+  const visibleMembers = data.paidByMemberId === data.currentMemberId
+    ? data.members.filter((m) => m.memberId !== data.currentMemberId)
+    : data.members
 
   return (
     <div className="rounded-2xl bg-[#1c1c24] p-5">
@@ -68,13 +88,22 @@ export default function RentStatusCard({ data }: RentStatusCardProps) {
           <p className={`text-5xl font-bold leading-none tabular-nums ${daysColor}`}>
             {data.daysUntilDue}
           </p>
-          <p className="text-xs text-white/40 mt-1">days until due</p>
+          <p className="text-xs text-white/40 mt-1">{daysLabel}</p>
         </div>
 
-        <div className="flex items-center gap-1.5 flex-wrap justify-end max-w-[140px]">
-          {data.members.map((member) => (
-            <MemberAvatar key={member.memberId} name={member.memberName} hasPaid={member.hasPaid} />
-          ))}
+        <div className="flex flex-col items-end gap-1.5 max-w-[200px]">
+          {visibleMembers.map((member) => {
+            const label = getMemberRow(member, data.paidByMemberId, data.currentMemberId, payerName)
+            if (!label) return null
+            return (
+              <p
+                key={member.memberId}
+                className={`text-xs text-right ${member.hasPaid ? 'text-emerald-400/70' : 'text-white/50'}`}
+              >
+                {label}
+              </p>
+            )
+          })}
         </div>
       </div>
     </div>

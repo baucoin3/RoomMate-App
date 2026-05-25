@@ -32,6 +32,8 @@ export interface LineItemConfig {
   aiNormalizedName?: string | null
   aiSuggestedCategoryName?: string | null
   aiCandidates?: string[]
+  categoryAutoMatched: boolean
+  itemGroup: string
   configured: boolean
   active: boolean
 }
@@ -90,6 +92,7 @@ export interface SaveReceiptPayload {
     default_category_id: string | null
     split_overrides?: { member_id: string; percentage: number }[] | null
     initial_aliases?: string[]
+    item_group?: string | null
   }>
   alias_inserts?: Array<{ household_item_id: string; display_text: string }>
 }
@@ -97,4 +100,21 @@ export interface SaveReceiptPayload {
 export interface ReceiptLedgerItem extends Receipt {
   expense_id: string | null
   category_name: string | null
+}
+
+export interface ReceiptDetailSplit {
+  memberNickname: string
+  amount: number
+}
+
+export interface ReceiptDetail {
+  id: string
+  imageUrl: string | null
+  merchantName: string
+  receiptDate: string
+  rawTotal: number
+  categoryName: string | null
+  lineItems: { id: string; description: string; amount: number; quantity: number | null }[]
+  splits: ReceiptDetailSplit[]
+  expenseTotal: number
 }

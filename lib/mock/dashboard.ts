@@ -21,12 +21,14 @@ export const MOCK_DASHBOARD_DATA: DashboardData = {
     dueDate: tenDaysFromNow.toISOString(),
     daysUntilDue: 10,
     members: [
-      { memberId: 'mock-member-1', memberName: 'Ben', hasPaid: true },
-      { memberId: 'mock-member-2', memberName: 'Sarah', hasPaid: true },
-      { memberId: 'mock-member-3', memberName: 'Alex', hasPaid: false },
+      { memberId: 'mock-member-1', memberName: 'Ben', hasPaid: true, shareAmount: 800 },
+      { memberId: 'mock-member-2', memberName: 'Sarah', hasPaid: true, shareAmount: 800 },
+      { memberId: 'mock-member-3', memberName: 'Alex', hasPaid: false, shareAmount: 800 },
     ],
     paidCount: 2,
     totalCount: 3,
+    paidByMemberId: 'mock-member-1',
+    currentMemberId: 'mock-member-1',
   },
   balances: [
     { memberId: 'mock-member-2', memberName: 'Sarah', netAmount: 22.0 },

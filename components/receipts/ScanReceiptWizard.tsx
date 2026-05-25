@@ -195,7 +195,12 @@ function matchLineItems(
       match.matchType === 'fuzzy' ||
       matchSource === 'ai'
 
-    const setupMode = matchSource !== null || probableNames.length > 0 ? 'item' : 'category'
+    const setupMode: 'item' | 'category' = householdItemId !== null ? 'item' : 'category'
+
+    const categoryAutoMatched =
+      householdItemId === null &&
+      itemDefaults.categoryId !== null &&
+      item.suggested_category_name != null
 
     return {
       description: item.description,
@@ -213,6 +218,8 @@ function matchLineItems(
       aiNormalizedName: item.normalized_name ?? null,
       aiSuggestedCategoryName: item.suggested_category_name ?? null,
       aiCandidates: probableNames,
+      categoryAutoMatched,
+      itemGroup: resolvedItemName ?? item.description,
       configured,
       active: true,
     }
@@ -473,14 +480,19 @@ export default function ScanReceiptWizard({
               (a) => a.toLowerCase() !== (c.resolvedItemName ?? c.description).toLowerCase()
             ),
           ].filter(Boolean),
+          item_group: c.itemGroup?.trim() || null,
         }))
 
       const aliasInserts = configsToSave
-        .filter((c) => c.rememberAlias && c.householdItemId)
-        .map((c) => ({
-          household_item_id: c.householdItemId!,
-          display_text: c.description,
-        }))
+        .filter((c) => c.householdItemId !== null)
+        .flatMap((c) => {
+          const allAliases = [c.description, ...(c.aiCandidates ?? [])]
+          const deduplicated = Array.from(new Set(allAliases.map((n) => n.trim()).filter(Boolean)))
+          return deduplicated.slice(0, 5).map((alias) => ({
+            household_item_id: c.householdItemId!,
+            display_text: alias,
+          }))
+        })
 
       const payload: SaveReceiptPayload = {
         household_id: householdId,

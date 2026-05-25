@@ -6,14 +6,13 @@ import { getMemberIdForUser } from '@/lib/services/finances'
 export async function POST(request: Request) {
   try {
     const body: unknown = await request.json()
-    const { category_id, with_member_id, household_id } = body as {
-      category_id?: string
-      with_member_id?: string
+    const { split_ids, household_id } = body as {
+      split_ids?: unknown
       household_id?: string
     }
 
-    if (!category_id || !with_member_id || !household_id) {
-      return NextResponse.json({ error: FINANCES.ERRORS.REQUIRED_FIELDS }, { status: 400 })
+    if (!Array.isArray(split_ids) || split_ids.length === 0 || !household_id) {
+      return NextResponse.json({ error: FINANCES.ERRORS.SPLIT_IDS_REQUIRED }, { status: 400 })
     }
 
     const supabase = createClient()
@@ -27,27 +26,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: FINANCES.ERRORS.FORBIDDEN }, { status: 403 })
     }
 
-    const { data: expenseIds, error: expFetchErr } = await supabase
-      .from('expenses')
-      .select('id')
-      .eq('household_id', household_id)
-      .eq('category_id', category_id)
-      .eq('paid_by_member_id', with_member_id)
+    const { data: splitRows, error: fetchErr } = await supabase
+      .from('expense_splits')
+      .select(`
+        id,
+        expenses!inner ( paid_by_member_id )
+      `)
+      .in('id', split_ids as string[])
 
-    if (expFetchErr) return NextResponse.json({ error: expFetchErr.message }, { status: 400 })
+    if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 400 })
 
-    const ids = (expenseIds ?? []).map((e: { id: string }) => e.id)
-
-    if (ids.length > 0) {
-      const { error: updateErr } = await supabase
-        .from('expense_splits')
-        .update({ is_settled: true })
-        .in('expense_id', ids)
-        .eq('household_member_id', currentMemberId)
-        .eq('is_settled', false)
-
-      if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 400 })
+    type SplitVerifyRow = { id: string; expenses: { paid_by_member_id: string } }
+    const unauthorized = (splitRows as unknown as SplitVerifyRow[]).some(
+      (s) => s.expenses.paid_by_member_id !== currentMemberId,
+    )
+    if (unauthorized) {
+      return NextResponse.json({ error: FINANCES.ERRORS.NOT_YOUR_EXPENSE }, { status: 403 })
     }
+
+    const { error: updateErr } = await supabase
+      .from('expense_splits')
+      .update({ is_settled: true })
+      .in('id', split_ids as string[])
+      .eq('is_settled', false)
+
+    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 400 })
 
     return NextResponse.json({ data: null })
   } catch {

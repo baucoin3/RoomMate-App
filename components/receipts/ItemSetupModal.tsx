@@ -167,6 +167,7 @@ export default function ItemSetupModal({
 
   const [itemSearch, setItemSearch] = useState('')
   const [showItemDropdown, setShowItemDropdown] = useState(false)
+  const searchContainerRef = useRef<HTMLDivElement>(null)
 
   const memberCount = allMembers.length
   const current = localConfigs[idx]
@@ -225,6 +226,16 @@ export default function ItemSetupModal({
 
   useEffect(() => {
     setSlideClass('translate-x-0 opacity-100')
+  }, [])
+
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setShowItemDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
   }, [])
 
   useEffect(() => {
@@ -306,12 +317,11 @@ export default function ItemSetupModal({
   }
 
   function switchToItemTab() {
-    updateCurrent({ setupMode: 'item', categoryId: null, useCustomSplit: false })
+    updateCurrent({ setupMode: 'item' })
   }
 
   function switchToCategoryTab() {
-    updateCurrent({ setupMode: 'category', householdItemId: null, resolvedItemName: null, matchSource: null })
-    setItemSearch('')
+    updateCurrent({ setupMode: 'category' })
   }
 
   function handleCategoryChange(catId: string) {
@@ -357,9 +367,6 @@ export default function ItemSetupModal({
   }
 
   const progressPct = Math.round(((idx + 1) / total) * 100)
-  const rememberLabel = current.resolvedItemName
-    ? RECEIPTS.ITEM_SETUP.REMEMBER_ALIAS_LABEL_FN(current.description, current.resolvedItemName)
-    : RECEIPTS.ITEM_SETUP.REMEMBER_ALIAS_LABEL
 
   function handleFooterButton() {
     const isLast = idx === total - 1
@@ -473,7 +480,7 @@ export default function ItemSetupModal({
                           </span>
                         )}
                       </div>
-                      <div className="relative">
+                      <div ref={searchContainerRef} className="relative">
                         <input
                           type="text"
                           value={itemSearch}
@@ -482,7 +489,6 @@ export default function ItemSetupModal({
                             setShowItemDropdown(true)
                           }}
                           onFocus={() => setShowItemDropdown(true)}
-                          onBlur={() => setTimeout(() => setShowItemDropdown(false), 150)}
                           placeholder={RECEIPTS.ITEM_SETUP.MATCH_ITEM_PLACEHOLDER}
                           className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 transition-colors"
                         />
@@ -581,7 +587,15 @@ export default function ItemSetupModal({
                       <>
                         <button
                           type="button"
-                          onClick={() => updateCurrent({ saveAsHouseholdItem: !current.saveAsHouseholdItem })}
+                          onClick={() => {
+                            const enabling = !current.saveAsHouseholdItem
+                            updateCurrent({
+                              saveAsHouseholdItem: enabling,
+                              itemGroup: enabling && !current.itemGroup
+                                ? (current.resolvedItemName ?? current.description)
+                                : current.itemGroup,
+                            })
+                          }}
                           className={`flex items-start gap-3 w-full p-3.5 rounded-xl border transition-all text-left ${
                             current.saveAsHouseholdItem
                               ? 'border-indigo-500/50 bg-indigo-500/10'
@@ -611,8 +625,16 @@ export default function ItemSetupModal({
                           </div>
                         </button>
 
-                        {/* Split preview when creating new item */}
+                        {/* Group input and split preview when creating new item */}
                         {current.saveAsHouseholdItem && (
+                          <>
+                          <input
+                            type="text"
+                            value={current.itemGroup}
+                            onChange={(e) => updateCurrent({ itemGroup: e.target.value })}
+                            placeholder={RECEIPTS.ITEM_SETUP.GROUP_PLACEHOLDER}
+                            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 transition-colors"
+                          />
                           <div>
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-xs text-white/50">
@@ -677,6 +699,7 @@ export default function ItemSetupModal({
                               )}
                             </div>
                           </div>
+                          </>
                         )}
                       </>
                     )}
@@ -717,32 +740,6 @@ export default function ItemSetupModal({
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => updateCurrent({ rememberAlias: !current.rememberAlias })}
-                          className={`flex items-start gap-3 w-full p-3.5 rounded-xl border transition-all text-left ${
-                            current.rememberAlias
-                              ? 'border-indigo-500/50 bg-indigo-500/10'
-                              : 'border-white/10 bg-white/3 hover:border-white/20'
-                          }`}
-                        >
-                          <div
-                            className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${
-                              current.rememberAlias
-                                ? 'border-indigo-400 bg-indigo-500'
-                                : 'border-white/30'
-                            }`}
-                          >
-                            {current.rememberAlias && (
-                              <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 text-white" fill="currentColor">
-                                <path d="M1 4l2.5 2.5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                              </svg>
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-white/90">{rememberLabel}</p>
-                          </div>
-                        </button>
                       </>
                     )}
                   </div>
@@ -752,9 +749,16 @@ export default function ItemSetupModal({
                 {current.setupMode === 'category' && (
                   <div className="flex flex-col gap-4">
                     <div>
-                      <label className="block text-xs text-white/50 mb-1.5">
-                        {RECEIPTS.ITEM_SETUP.CATEGORY_LABEL}
-                      </label>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <label className="block text-xs text-white/50">
+                          {RECEIPTS.ITEM_SETUP.CATEGORY_LABEL}
+                        </label>
+                        {current.categoryAutoMatched && (
+                          <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-white/8 text-white/50 border border-white/10">
+                            {RECEIPTS.ITEM_SETUP.MATCH_BADGE_SUGGESTED}
+                          </span>
+                        )}
+                      </div>
                       <select
                         value={current.categoryId ?? ''}
                         onChange={(e) => handleCategoryChange(e.target.value)}

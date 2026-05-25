@@ -96,7 +96,7 @@ function ItemForm({ householdId, categories, members, initialItem, onSaved, onCa
         onChange={(e) => setCategoryId(e.target.value)}
         className="w-full rounded-lg bg-[#1c1c24] border border-white/10 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
       >
-        <option value="">{FINANCES.SETTINGS.NO_OWNER}</option>
+        <option value="">{FINANCES.SETTINGS.NO_CATEGORY}</option>
         {categories.map((c) => (
           <option key={c.id} value={c.id}>{c.name}</option>
         ))}
@@ -314,7 +314,17 @@ function ItemRow({ item, householdId, categories, members, deleting, onUpdated, 
                   const m = members.find((mb) => mb.id === s.member_id)
                   return `${m?.nickname ?? s.member_id} ${s.percentage}%`
                 }).join(' / ')
-              : FINANCES.SETTINGS.USES_DEFAULT}
+              : (() => {
+                  const cat = localItem.default_category_id
+                    ? categories.find((c) => c.id === localItem.default_category_id)
+                    : null
+                  const catSplits = cat?.splits ?? []
+                  if (catSplits.length === 0) return FINANCES.SETTINGS.USES_DEFAULT
+                  return catSplits.map((s) => {
+                    const m = members.find((mb) => mb.id === s.household_member_id)
+                    return `${m?.nickname ?? s.household_member_id} ${s.percentage}%`
+                  }).join(' / ') + ` (${FINANCES.SETTINGS.VIA_CATEGORY(cat!.name)})`
+                })()}
           </div>
         </div>
         <div className="flex items-center gap-2">

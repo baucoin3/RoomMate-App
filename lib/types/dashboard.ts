@@ -7,6 +7,7 @@ export interface RentMember {
   memberId: string
   memberName: string
   hasPaid: boolean
+  shareAmount: number
 }
 
 export interface RentStatus {
@@ -18,6 +19,8 @@ export interface RentStatus {
   members: RentMember[]
   paidCount: number
   totalCount: number
+  paidByMemberId: string
+  currentMemberId: string
 }
 
 export interface Balance {
