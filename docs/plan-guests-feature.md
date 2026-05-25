@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add a Guests system that allows household members to include non-app-users (friends, partners, cottage buddies) in receipt splits. Guests are managed entirely by the household — they never log in. After the expense is saved, guests with emails receive a notification telling them what they owe and who to pay.
+Add a Guests system that allows household members to include non-app-users (friends, partners, cottage buddies) in receipt splits. Guests are managed entirely by the household — they never log in. After the expense is saved, guests with emails receive a notification telling them what they owe and who to pay. This new page can be under settings have a tab for household settings and giest sttings since we dont need more pages in the dashboard menu
 
 ---
 

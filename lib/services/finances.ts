@@ -2,21 +2,14 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   ExpenseCategory,
   RecurringExpense,
-  BalanceSummary,
-  UpcomingBill,
-  RoommateShare,
+  OweSummary,
+  OweItem,
   ActivityItem,
+  RecurringBillOverview,
+  RecurringBillMemberStatus,
 } from '@/lib/types/finances'
-
-// ─── Helper ────────────────────────────────────────────────────────────────
-
-function getLastDayOfMonth(year: number, monthIndex: number): number {
-  return new Date(year, monthIndex + 1, 0).getDate()
-}
-
-function getMonthlyDueDate(year: number, monthIndex: number, dayOfMonth: number): Date {
-  return new Date(year, monthIndex, Math.min(dayOfMonth, getLastDayOfMonth(year, monthIndex)))
-}
+import { FINANCES } from '@/locales/en'
+import { getCurrentCycleDueDate, isDateInCycle } from '@/lib/utils/recurringCycle'
 
 export async function getMemberIdForUser(
   supabase: SupabaseClient,
@@ -143,207 +136,120 @@ export async function getRecurringExpensesForHousehold(
   return { data: expenses, error: null }
 }
 
-// ─── Balances ──────────────────────────────────────────────────────────────
+// ─── Owe summary ───────────────────────────────────────────────────────────
 
-export async function getBalanceSummary(
+export async function getOweSummary(
   supabase: SupabaseClient,
   householdId: string,
   currentMemberId: string,
-): Promise<{ data: BalanceSummary | null; error: string | null }> {
-  const { data: splits, error } = await supabase
-    .from('expense_splits')
-    .select(`
-      household_member_id,
-      calculated_amount,
-      is_settled,
-      expenses!inner (
-        household_id,
-        paid_by_member_id,
-        category_id,
-        expense_categories ( id, name )
-      ),
-      member:household_members!household_member_id ( id, nickname )
-    `)
-    .eq('expenses.household_id', householdId)
-    .eq('is_settled', false)
-
-  if (error) return { data: null, error: error.message }
-
-  type SplitRow = {
-    household_member_id: string
-    calculated_amount: number
-    is_settled: boolean
-    expenses: {
-      household_id: string
-      paid_by_member_id: string
-      category_id: string | null
-      expense_categories: { id: string; name: string } | null
-    }
-    member: { id: string; nickname: string } | null
-  }
-
-  type BalanceKey = `${string}::${string}`
-  const youOweMap = new Map<BalanceKey, { to_member: { id: string; nickname: string }; category: { id: string; name: string }; amount: number; count: number }>()
-  const owedToYouMap = new Map<BalanceKey, { from_member: { id: string; nickname: string }; category: { id: string; name: string }; amount: number; count: number }>()
-
-  const payerIdSet = new Set<string>()
-  for (const s of splits as unknown as SplitRow[]) {
-    if (s.household_member_id === currentMemberId && s.expenses.paid_by_member_id !== currentMemberId) {
-      payerIdSet.add(s.expenses.paid_by_member_id)
-    }
-  }
-  const payerIds = Array.from(payerIdSet)
-
-  const payerMap = new Map<string, { id: string; nickname: string }>()
-  if (payerIds.length > 0) {
-    const { data: payerRows } = await supabase
-      .from('household_members')
-      .select('id, nickname')
-      .in('id', payerIds)
-    for (const p of payerRows ?? []) {
-      payerMap.set(p.id, p as { id: string; nickname: string })
-    }
-  }
-
-  for (const split of splits as unknown as SplitRow[]) {
-    const { household_member_id, calculated_amount, expenses: exp, member } = split
-    const amount = Number(calculated_amount)
-    const category = exp.expense_categories ?? { id: exp.category_id ?? '', name: '' }
-
-    if (exp.paid_by_member_id === currentMemberId && household_member_id !== currentMemberId) {
-      const key: BalanceKey = `${household_member_id}::${category.id}`
-      const existing = owedToYouMap.get(key)
-      owedToYouMap.set(key, {
-        from_member: member ?? { id: household_member_id, nickname: 'Unknown' },
-        category,
-        amount: (existing?.amount ?? 0) + amount,
-        count: (existing?.count ?? 0) + 1,
-      })
-    }
-
-    if (household_member_id === currentMemberId && exp.paid_by_member_id !== currentMemberId) {
-      const payer = payerMap.get(exp.paid_by_member_id) ?? { id: exp.paid_by_member_id, nickname: 'Unknown' }
-      const key: BalanceKey = `${exp.paid_by_member_id}::${category.id}`
-      const existing = youOweMap.get(key)
-      youOweMap.set(key, {
-        to_member: payer,
-        category,
-        amount: (existing?.amount ?? 0) + amount,
-        count: (existing?.count ?? 0) + 1,
-      })
-    }
-  }
-
-  const you_owe = Array.from(youOweMap.values()).map(({ to_member, category, amount, count }) => ({
-    to_member,
-    category,
-    amount: Math.round(amount * 100) / 100,
-    expense_count: count,
-  }))
-
-  const owed_to_you = Array.from(owedToYouMap.values()).map(({ from_member, category, amount, count }) => ({
-    from_member,
-    category,
-    amount: Math.round(amount * 100) / 100,
-    expense_count: count,
-  }))
-
-  return { data: { you_owe, owed_to_you }, error: null }
-}
-
-// ─── Upcoming bills ────────────────────────────────────────────────────────
-
-export async function getUpcomingBills(
-  supabase: SupabaseClient,
-  householdId: string,
-  currentMemberId: string,
-): Promise<{ data: UpcomingBill[] | null; error: string | null }> {
-  const { data, error } = await supabase
-    .from('recurring_expenses')
-    .select(`
-      id,
-      description,
-      amount,
-      due_day_of_month,
-      paid_by_member_id,
-      alert_days_before,
-      payer:household_members!paid_by_member_id ( id, nickname ),
-      category:expense_categories ( name ),
-      splits:recurring_expense_splits (
-        household_member_id,
-        percentage,
-        amount,
-        member:household_members ( id, nickname )
-      )
-    `)
-    .eq('household_id', householdId)
-    .eq('is_active', true)
-
-  if (error) return { data: null, error: error.message }
-
-  type Row = {
+): Promise<{ data: OweSummary | null; error: string | null }> {
+  type ReceiptRow = { id: string; merchant_name: string | null; receipt_date: string | null } | null
+  type ExpenseRowA = {
     id: string
     description: string
-    amount: number
-    due_day_of_month: number
+    date: string
+    receipt_id: string | null
+    receipts: ReceiptRow
+  }
+  type SplitRowA = {
+    id: string
+    household_member_id: string
+    calculated_amount: number
+    expenses: ExpenseRowA
+    debtor: { id: string; nickname: string } | null
+  }
+
+  type ExpenseRowB = {
+    id: string
+    description: string
+    date: string
+    receipt_id: string | null
     paid_by_member_id: string
-    alert_days_before: number
-    payer: { id: string; nickname: string } | null
-    category: { name: string } | null
-    splits: { household_member_id: string; percentage: number; amount: number | null; member: { id: string; nickname: string } | null }[]
+    receipts: ReceiptRow
+    creditor: { id: string; nickname: string } | null
+  }
+  type SplitRowB = {
+    id: string
+    household_member_id: string
+    calculated_amount: number
+    expenses: ExpenseRowB
   }
 
-  const today = new Date()
-  const bills: UpcomingBill[] = []
+  const [owedRes, youOweRes] = await Promise.all([
+    supabase
+      .from('expense_splits')
+      .select(`
+        id,
+        household_member_id,
+        calculated_amount,
+        expenses!inner (
+          id,
+          description,
+          date,
+          receipt_id,
+          receipts ( id, merchant_name, receipt_date )
+        ),
+        debtor:household_members!household_member_id ( id, nickname )
+      `)
+      .eq('expenses.household_id', householdId)
+      .eq('expenses.paid_by_member_id', currentMemberId)
+      .neq('household_member_id', currentMemberId)
+      .eq('is_settled', false),
 
-  for (const row of data as unknown as Row[]) {
-    let nextDue = getMonthlyDueDate(today.getFullYear(), today.getMonth(), row.due_day_of_month)
-    if (nextDue < today) {
-      nextDue = getMonthlyDueDate(today.getFullYear(), today.getMonth() + 1, row.due_day_of_month)
-    }
-    const msUntil = nextDue.getTime() - today.getTime()
-    const daysUntil = Math.ceil(msUntil / (1000 * 60 * 60 * 24))
-    const isOverdue = nextDue < today
+    supabase
+      .from('expense_splits')
+      .select(`
+        id,
+        household_member_id,
+        calculated_amount,
+        expenses!inner (
+          id,
+          description,
+          date,
+          receipt_id,
+          paid_by_member_id,
+          receipts ( id, merchant_name, receipt_date ),
+          creditor:household_members!paid_by_member_id ( id, nickname )
+        )
+      `)
+      .eq('expenses.household_id', householdId)
+      .eq('household_member_id', currentMemberId)
+      .neq('expenses.paid_by_member_id', currentMemberId)
+      .eq('is_settled', false),
+  ])
 
-    if (daysUntil > row.alert_days_before && !isOverdue) continue
+  if (owedRes.error) return { data: null, error: owedRes.error.message }
+  if (youOweRes.error) return { data: null, error: youOweRes.error.message }
 
-    const yourSplit = row.splits.find((s) => s.household_member_id === currentMemberId)
-    const yourShare = yourSplit
-      ? yourSplit.amount !== null
-        ? Number(yourSplit.amount)
-        : Math.round((Number(yourSplit.percentage) / 100) * Number(row.amount) * 100) / 100
-      : 0
+  const owed_to_you: OweItem[] = (owedRes.data as unknown as SplitRowA[])
+    .map((s) => ({
+      split_id: s.id,
+      expense_id: s.expenses.id,
+      description: s.expenses.description,
+      date: s.expenses.date,
+      amount: Math.round(Number(s.calculated_amount) * 100) / 100,
+      debtor: s.debtor ?? undefined,
+      receipt: s.expenses.receipts
+        ? { id: s.expenses.receipts.id, merchant_name: s.expenses.receipts.merchant_name, receipt_date: s.expenses.receipts.receipt_date }
+        : null,
+    }))
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
-    const youArePayer = row.paid_by_member_id === currentMemberId
-    const roommateShares: RoommateShare[] = youArePayer
-      ? row.splits
-          .filter((s) => s.household_member_id !== currentMemberId)
-          .map((s) => ({
-            member_id: s.household_member_id,
-            nickname: s.member?.nickname ?? s.household_member_id.slice(0, 8),
-            amount: s.amount !== null
-              ? Number(s.amount)
-              : Math.round((Number(s.percentage) / 100) * Number(row.amount) * 100) / 100,
-          }))
-      : []
+  const you_owe: OweItem[] = (youOweRes.data as unknown as SplitRowB[])
+    .map((s) => ({
+      split_id: s.id,
+      expense_id: s.expenses.id,
+      description: s.expenses.description,
+      date: s.expenses.date,
+      amount: Math.round(Number(s.calculated_amount) * 100) / 100,
+      creditor: s.expenses.creditor ?? undefined,
+      receipt: s.expenses.receipts
+        ? { id: s.expenses.receipts.id, merchant_name: s.expenses.receipts.merchant_name, receipt_date: s.expenses.receipts.receipt_date }
+        : null,
+    }))
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
-    bills.push({
-      recurring_expense_id: row.id,
-      description: row.description,
-      category_name: row.category?.name ?? '',
-      due_date: nextDue.toISOString(),
-      is_overdue: isOverdue,
-      days_until: daysUntil,
-      alert_days_before: row.alert_days_before,
-      your_share: yourShare,
-      payer: row.payer ?? { id: row.paid_by_member_id, nickname: 'Unknown' },
-      you_are_payer: youArePayer,
-      roommate_shares: roommateShares,
-    })
-  }
-
-  bills.sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
-  return { data: bills, error: null }
+  return { data: { owed_to_you, you_owe }, error: null }
 }
 
 // ─── Recent activity ───────────────────────────────────────────────────────
@@ -415,4 +321,372 @@ export async function getRecentActivity(
   })
 
   return { data: items, error: null }
+}
+
+// ─── Recurring bills overview ──────────────────────────────────────────────
+
+function roundAmount(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+export async function getRecurringBillsOverview(
+  supabase: SupabaseClient,
+  householdId: string,
+  currentMemberId: string,
+): Promise<{ data: RecurringBillOverview[] | null; error: string | null }> {
+  const { data: recurringRows, error: recurringErr } = await supabase
+    .from('recurring_expenses')
+    .select(`
+      id,
+      household_id,
+      category_id,
+      description,
+      amount,
+      paid_by_member_id,
+      due_day_of_month,
+      alert_days_before,
+      is_active,
+      payer:household_members!paid_by_member_id ( id, nickname ),
+      category:expense_categories ( name ),
+      splits:recurring_expense_splits (
+        id,
+        recurring_expense_id,
+        household_member_id,
+        percentage,
+        amount,
+        member:household_members ( id, nickname )
+      )
+    `)
+    .eq('household_id', householdId)
+    .eq('is_active', true)
+    .order('description', { ascending: true })
+
+  if (recurringErr) return { data: null, error: recurringErr.message }
+
+  type RecurringRow = {
+    id: string
+    household_id: string
+    category_id: string | null
+    description: string
+    amount: number
+    paid_by_member_id: string
+    due_day_of_month: number
+    alert_days_before: number
+    is_active: boolean
+    payer: { id: string; nickname: string } | null
+    category: { name: string } | null
+    splits: {
+      id: string
+      recurring_expense_id: string
+      household_member_id: string
+      percentage: number
+      amount: number
+      member: { id: string; nickname: string } | null
+    }[]
+  }
+
+  const recurring = (recurringRows as unknown as RecurringRow[]) ?? []
+  if (recurring.length === 0) return { data: [], error: null }
+
+  const recurringIds = recurring.map((r) => r.id)
+
+  const { data: expenseRows, error: expenseErr } = await supabase
+    .from('expenses')
+    .select(`
+      id,
+      recurring_expense_id,
+      date,
+      expense_splits (
+        id,
+        household_member_id,
+        calculated_amount,
+        is_settled,
+        member:household_members ( id, nickname )
+      )
+    `)
+    .eq('household_id', householdId)
+    .in('recurring_expense_id', recurringIds)
+
+  if (expenseErr) return { data: null, error: expenseErr.message }
+
+  type ExpenseSplitRow = {
+    id: string
+    household_member_id: string
+    calculated_amount: number
+    is_settled: boolean
+    member: { id: string; nickname: string } | null
+  }
+
+  type ExpenseRow = {
+    id: string
+    recurring_expense_id: string
+    date: string
+    expense_splits: ExpenseSplitRow[]
+  }
+
+  const expenses = (expenseRows as unknown as ExpenseRow[]) ?? []
+
+  const bills: RecurringBillOverview[] = recurring.map((r) => {
+    const cycleDueDate = getCurrentCycleDueDate(r.due_day_of_month)
+    const cycleExpense = expenses.find(
+      (e) => e.recurring_expense_id === r.id && isDateInCycle(e.date, cycleDueDate),
+    )
+
+    const payer = r.payer ?? { id: r.paid_by_member_id, nickname: 'Unknown' }
+    const viewerIsPayer = r.paid_by_member_id === currentMemberId
+
+    let members: RecurringBillMemberStatus[] = []
+    let viewerOwesAmount = 0
+    let viewerCollectTotal = 0
+    let viewerCollectUnsettledTotal = 0
+
+    if (!cycleExpense) {
+      members = r.splits.map((s) => {
+        const shareAmount = roundAmount(Number(s.amount) || roundAmount((Number(s.percentage) / 100) * Number(r.amount)))
+        const isPayer = s.household_member_id === r.paid_by_member_id
+        const isViewer = s.household_member_id === currentMemberId
+
+        if (viewerIsPayer && !isPayer) {
+          viewerCollectTotal += shareAmount
+          viewerCollectUnsettledTotal += shareAmount
+        } else if (!viewerIsPayer && isViewer) {
+          viewerOwesAmount += shareAmount
+        }
+
+        return {
+          member_id: s.household_member_id,
+          member_name: s.member?.nickname ?? 'Unknown',
+          share_amount: shareAmount,
+          is_payer: isPayer,
+          is_viewer: isViewer,
+          is_settled: null,
+          split_id: null,
+        }
+      })
+    } else {
+      const splitByMember = new Map(
+        cycleExpense.expense_splits.map((s) => [s.household_member_id, s]),
+      )
+
+      members = r.splits.map((s) => {
+        const expenseSplit = splitByMember.get(s.household_member_id)
+        const shareAmount = expenseSplit
+          ? roundAmount(Number(expenseSplit.calculated_amount))
+          : roundAmount(Number(s.amount) || roundAmount((Number(s.percentage) / 100) * Number(r.amount)))
+        const isPayer = s.household_member_id === r.paid_by_member_id
+        const isViewer = s.household_member_id === currentMemberId
+        const isSettled = expenseSplit?.is_settled ?? (isPayer ? true : false)
+
+        if (viewerIsPayer && !isPayer) {
+          viewerCollectTotal += shareAmount
+          if (!isSettled) viewerCollectUnsettledTotal += shareAmount
+        } else if (!viewerIsPayer && isViewer && !isSettled) {
+          viewerOwesAmount += shareAmount
+        }
+
+        return {
+          member_id: s.household_member_id,
+          member_name: s.member?.nickname ?? expenseSplit?.member?.nickname ?? 'Unknown',
+          share_amount: shareAmount,
+          is_payer: isPayer,
+          is_viewer: isViewer,
+          is_settled: isSettled,
+          split_id: expenseSplit?.id ?? null,
+        }
+      })
+    }
+
+    return {
+      recurring_expense_id: r.id,
+      description: r.description,
+      category_name: r.category?.name ?? null,
+      total_amount: roundAmount(Number(r.amount)),
+      due_day_of_month: r.due_day_of_month,
+      alert_days_before: r.alert_days_before,
+      is_active: r.is_active,
+      payer,
+      cycle_status: cycleExpense ? 'logged' : 'not_logged',
+      cycle_due_date: cycleDueDate,
+      cycle_expense_id: cycleExpense?.id ?? null,
+      members,
+      viewer_owes_amount: roundAmount(viewerOwesAmount),
+      viewer_is_payer: viewerIsPayer,
+      viewer_collect_total: roundAmount(viewerCollectTotal),
+      viewer_collect_unsettled_total: roundAmount(viewerCollectUnsettledTotal),
+    }
+  })
+
+  bills.sort((a, b) => {
+    const dateCmp = a.cycle_due_date.localeCompare(b.cycle_due_date)
+    return dateCmp !== 0 ? dateCmp : a.description.localeCompare(b.description)
+  })
+
+  return { data: bills, error: null }
+}
+
+export async function confirmRecurringExpenseForCycle(
+  supabase: SupabaseClient,
+  recurringId: string,
+  userId: string,
+): Promise<{ data: { expense_id: string } | null; error: string | null; status?: number }> {
+  const { data: recurring, error: fetchErr } = await supabase
+    .from('recurring_expenses')
+    .select(`
+      id,
+      household_id,
+      category_id,
+      description,
+      amount,
+      paid_by_member_id,
+      due_day_of_month,
+      recurring_expense_splits ( household_member_id, percentage, amount )
+    `)
+    .eq('id', recurringId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (fetchErr || !recurring) {
+    return { data: null, error: FINANCES.ERRORS.NOT_FOUND, status: 404 }
+  }
+
+  type RecurringRow = {
+    id: string
+    household_id: string
+    category_id: string | null
+    description: string
+    amount: number
+    paid_by_member_id: string
+    due_day_of_month: number
+    recurring_expense_splits: { household_member_id: string; percentage: number; amount: number }[]
+  }
+
+  const rec = recurring as unknown as RecurringRow
+
+  const memberId = await getMemberIdForUser(supabase, rec.household_id, userId)
+  if (!memberId) {
+    return { data: null, error: FINANCES.ERRORS.FORBIDDEN, status: 403 }
+  }
+
+  const cycleDueDate = getCurrentCycleDueDate(rec.due_day_of_month)
+
+  const { data: existingExpenses, error: existingErr } = await supabase
+    .from('expenses')
+    .select('id, date')
+    .eq('recurring_expense_id', rec.id)
+    .eq('household_id', rec.household_id)
+
+  if (existingErr) return { data: null, error: existingErr.message, status: 400 }
+
+  const alreadyConfirmed = (existingExpenses ?? []).some((e) =>
+    isDateInCycle(e.date as string, cycleDueDate),
+  )
+  if (alreadyConfirmed) {
+    return {
+      data: null,
+      error: FINANCES.ERRORS.ALREADY_CONFIRMED_THIS_CYCLE,
+      status: 409,
+    }
+  }
+
+  const { data: expense, error: expenseErr } = await supabase
+    .from('expenses')
+    .insert({
+      household_id: rec.household_id,
+      category_id: rec.category_id,
+      description: rec.description,
+      total_amount: rec.amount,
+      paid_by_member_id: rec.paid_by_member_id,
+      recurring_expense_id: rec.id,
+      date: cycleDueDate,
+    })
+    .select('id')
+    .single()
+
+  if (expenseErr || !expense) {
+    return { data: null, error: expenseErr?.message ?? FINANCES.ERRORS.CONFIRM_FAILED, status: 400 }
+  }
+
+  const splitRows = rec.recurring_expense_splits.map((s) => {
+    const calculatedAmount =
+      s.amount != null && Number(s.amount) > 0
+        ? roundAmount(Number(s.amount))
+        : roundAmount((Number(s.percentage) / 100) * Number(rec.amount))
+
+    return {
+      expense_id: expense.id,
+      household_member_id: s.household_member_id,
+      percentage_override: s.percentage,
+      calculated_amount: calculatedAmount,
+      is_settled: s.household_member_id === rec.paid_by_member_id,
+    }
+  })
+
+  const { error: splitsErr } = await supabase.from('expense_splits').insert(splitRows)
+  if (splitsErr) {
+    await supabase.from('expenses').delete().eq('id', expense.id)
+    return { data: null, error: splitsErr.message, status: 400 }
+  }
+
+  return { data: { expense_id: expense.id }, error: null }
+}
+
+export async function settleRecurringMemberForCycle(
+  supabase: SupabaseClient,
+  recurringId: string,
+  householdId: string,
+  targetMemberId: string,
+  userId: string,
+): Promise<{ data: null; error: string | null; status?: number }> {
+  const currentMemberId = await getMemberIdForUser(supabase, householdId, userId)
+  if (!currentMemberId) {
+    return { data: null, error: FINANCES.ERRORS.FORBIDDEN, status: 403 }
+  }
+
+  const { data: recurring, error: recurringErr } = await supabase
+    .from('recurring_expenses')
+    .select('id, household_id, paid_by_member_id, due_day_of_month')
+    .eq('id', recurringId)
+    .eq('household_id', householdId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (recurringErr || !recurring) {
+    return { data: null, error: FINANCES.ERRORS.NOT_FOUND, status: 404 }
+  }
+
+  if (recurring.paid_by_member_id !== currentMemberId) {
+    return { data: null, error: FINANCES.ERRORS.FORBIDDEN, status: 403 }
+  }
+
+  const cycleDueDate = getCurrentCycleDueDate(recurring.due_day_of_month)
+
+  const { data: cycleExpenses, error: expenseErr } = await supabase
+    .from('expenses')
+    .select('id, date')
+    .eq('household_id', householdId)
+    .eq('recurring_expense_id', recurringId)
+
+  if (expenseErr) {
+    return { data: null, error: expenseErr.message, status: 400 }
+  }
+
+  const cycleExpense = (cycleExpenses ?? []).find((e) =>
+    isDateInCycle(e.date as string, cycleDueDate),
+  )
+
+  if (!cycleExpense) {
+    return { data: null, error: FINANCES.ERRORS.NOT_FOUND, status: 404 }
+  }
+
+  const { error: settleErr } = await supabase
+    .from('expense_splits')
+    .update({ is_settled: true })
+    .eq('expense_id', cycleExpense.id)
+    .eq('household_member_id', targetMemberId)
+
+  if (settleErr) {
+    return { data: null, error: settleErr.message, status: 400 }
+  }
+
+  return { data: null, error: null }
 }

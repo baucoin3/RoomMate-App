@@ -1,18 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useParams } from 'next/navigation'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import type { ExpenseCategory, RecurringExpense, HouseholdMemberSummary } from '@/lib/types/finances'
 import type { HouseholdItem } from '@/lib/types/householdItems'
-import { FINANCES } from '@/locales/en'
-import CategoriesSection from './settings/CategoriesSection'
-import ItemRulesSection from './settings/ItemRulesSection'
-import RecurringSection from './settings/RecurringSection'
-
-interface SettingsTabProps {
-  householdId: string
-  members: HouseholdMemberSummary[]
-}
+import { FINANCES, SETTINGS } from '@/locales/en'
+import CategoriesSection from '../finances/components/settings/CategoriesSection'
+import ItemRulesSection from '../finances/components/settings/ItemRulesSection'
+import RecurringSection from '../finances/components/settings/RecurringSection'
 
 function ChevronIcon({ open }: { open: boolean }) {
   return (
@@ -57,10 +53,12 @@ function AccordionSection({ title, defaultOpen = false, children }: AccordionSec
   )
 }
 
-export default function SettingsTab({ householdId, members }: SettingsTabProps) {
+export default function SettingsPage() {
+  const { householdId } = useParams<{ householdId: string }>()
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [householdItems, setHouseholdItems] = useState<HouseholdItem[]>([])
   const [recurring, setRecurring] = useState<RecurringExpense[]>([])
+  const [members, setMembers] = useState<HouseholdMemberSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -71,15 +69,17 @@ export default function SettingsTab({ householdId, members }: SettingsTabProps) 
       setLoading(true)
       setError('')
       try {
-        const [catsRes, itemsRes, recurringRes] = await Promise.all([
+        const [catsRes, itemsRes, recurringRes, membersRes] = await Promise.all([
           apiClient.get<{ data: ExpenseCategory[] }>(`/api/finances/categories?householdId=${householdId}`),
           apiClient.get<{ data: HouseholdItem[] }>(`/api/household-items/list?householdId=${householdId}`),
           apiClient.get<{ data: RecurringExpense[] }>(`/api/finances/recurring?householdId=${householdId}`),
+          apiClient.get<{ data: HouseholdMemberSummary[] }>(`/api/households/${householdId}/members`),
         ])
         if (!cancelled) {
           setCategories(catsRes.data.data ?? [])
           setHouseholdItems(itemsRes.data.data ?? [])
           setRecurring(recurringRes.data.data ?? [])
+          setMembers(membersRes.data.data ?? [])
         }
       } catch (err) {
         if (!cancelled) setError(getErrorMessage(err))
@@ -94,7 +94,11 @@ export default function SettingsTab({ householdId, members }: SettingsTabProps) 
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 pt-1 pb-24 md:pb-6">
+        <div className="mb-2">
+          <h2 className="text-lg font-semibold text-white">{SETTINGS.TITLE}</h2>
+          <p className="text-xs text-white/40 mt-0.5">{SETTINGS.SUBTITLE}</p>
+        </div>
         {[0, 1, 2].map((i) => (
           <div key={i} className="h-14 rounded-2xl bg-white/5 animate-pulse" />
         ))}
@@ -104,15 +108,22 @@ export default function SettingsTab({ householdId, members }: SettingsTabProps) 
 
   if (error) {
     return (
-      <div className="rounded-2xl bg-red-500/10 border border-red-500/20 px-5 py-4">
-        <p className="text-sm text-red-400">{error}</p>
+      <div className="pt-1 pb-24 md:pb-6">
+        <div className="rounded-2xl bg-red-500/10 border border-red-500/20 px-5 py-4">
+          <p className="text-sm text-red-400">{error}</p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col gap-3">
-        <AccordionSection title={FINANCES.SETTINGS.RECURRING_TITLE}>
+    <div className="flex flex-col gap-4 pt-1 pb-24 md:pb-6">
+      <div className="mb-2">
+        <h2 className="text-lg font-semibold text-white">{SETTINGS.TITLE}</h2>
+        <p className="text-xs text-white/40 mt-0.5">{SETTINGS.SUBTITLE}</p>
+      </div>
+
+      <AccordionSection title={FINANCES.SETTINGS.RECURRING_TITLE}>
         <RecurringSection
           householdId={householdId}
           recurring={recurring}
@@ -121,6 +132,7 @@ export default function SettingsTab({ householdId, members }: SettingsTabProps) 
           onRecurringChanged={(updater) => setRecurring(updater)}
         />
       </AccordionSection>
+
       <AccordionSection title={FINANCES.SETTINGS.CATEGORIES_TITLE} defaultOpen>
         <CategoriesSection
           householdId={householdId}

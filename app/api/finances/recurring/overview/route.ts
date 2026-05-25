@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { AUTH, FINANCES, ERRORS } from '@/locales/en'
-import { getOweSummary, getMemberIdForUser } from '@/lib/services/finances'
+import { getRecurringBillsOverview, getMemberIdForUser } from '@/lib/services/finances'
 
 export async function GET(request: Request) {
   try {
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: FINANCES.ERRORS.FORBIDDEN }, { status: 403 })
     }
 
-    const { data, error } = await getOweSummary(supabase, householdId, memberId)
+    const { data, error } = await getRecurringBillsOverview(supabase, householdId, memberId)
     if (error) return NextResponse.json({ error }, { status: 400 })
 
     return NextResponse.json({ data })

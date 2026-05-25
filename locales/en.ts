@@ -197,12 +197,18 @@ export const FINANCES = {
     BALANCES_TITLE: 'Balances',
     UPCOMING_TITLE: 'Upcoming Bills',
     ACTIVITY_TITLE: 'Recent Activity',
+    OWED_TO_YOU_TITLE: 'Owed to You',
+    YOU_OWE_TITLE: 'You Owe',
     ALL_SETTLED: 'All settled up.',
+    ALL_SETTLED_OWED: 'No one owes you anything right now.',
+    ALL_SETTLED_OWE: "You don't owe anyone right now.",
     NO_UPCOMING: 'No upcoming bills.',
     NO_ACTIVITY: 'No recent activity.',
     YOU_OWE: 'You owe',
     OWES_YOU: 'owes you',
     SETTLE_UP: 'Settle up',
+    SETTLE: 'Settle',
+    CLEAR_ALL: 'Clear All',
     SETTLING: 'Settling…',
     DUE: (date: string) => `Due ${date}`,
     OVERDUE: (date: string) => `Overdue — was ${date}`,
@@ -223,6 +229,13 @@ export const FINANCES = {
     TOTAL_LABEL: 'Total',
     EXPAND_SPLITS: 'Show splits',
     COLLAPSE_SPLITS: 'Hide splits',
+    RECURRING_BILLS_TITLE: 'Recurring Bills',
+    NOT_LOGGED_THIS_CYCLE: 'Not logged this cycle',
+    LOGGED_THIS_CYCLE: 'Logged this cycle',
+    NO_RECURRING_BILLS: 'No recurring bills set up yet.',
+    GO_TO_SETTINGS: 'Set up in Settings',
+    MEMBER_HAS_PAID: (name: string) => `${name} has paid`,
+    YOU_HAVE_PAID: 'You have paid',
   },
   SETTINGS: {
     CATEGORIES_TITLE: 'Categories',
@@ -232,6 +245,7 @@ export const FINANCES = {
     ADD_CATEGORY: 'Add category',
     EDIT_SPLITS: 'Edit splits',
     NO_OWNER: 'No owner',
+    NO_CATEGORY: 'No category',
     PAYER_LABEL: 'Payer',
     ADD_ITEM_RULE: 'Add item rule',
     ADD_HOUSEHOLD_ITEM: 'Add household item',
@@ -248,6 +262,7 @@ export const FINANCES = {
     CUSTOM_SPLIT: 'Custom split',
     UNGROUPED: 'Ungrouped',
     USES_DEFAULT: 'Uses category default',
+    VIA_CATEGORY: (name: string) => `${name} default`,
     ADD_RECURRING: 'Add recurring bill',
     DUE_DATE_LABEL: 'Due day',
     DUE_DATE_HINT: 'Pick a day of the month between the 1st and 31st. Shorter months use their last day.',
@@ -290,6 +305,9 @@ export const FINANCES = {
     HOUSEHOLD_REQUIRED: 'Household ID is required.',
     AMOUNT_POSITIVE: 'Amount must be greater than 0.',
     DUE_DAY_RANGE: 'Due day must be between 1 and 31.',
+    SPLIT_IDS_REQUIRED: 'split_ids is required and must be a non-empty array.',
+    NOT_YOUR_EXPENSE: 'You can only settle expenses you paid for.',
+    ALREADY_CONFIRMED_THIS_CYCLE: 'This recurring bill is already logged for the current billing cycle.',
   },
 } as const
 
@@ -467,6 +485,18 @@ export const RECEIPTS = {
     FILE_TOO_LARGE: 'Image must be under 10 MB.',
     INVALID_FILE_TYPE: 'Only JPG, PNG, and WEBP images are accepted.',
   },
+  FILTER_ALL: 'All',
+  FILTER_BY_CATEGORY: 'Filter by category',
+  DETAIL: {
+    TITLE: 'Receipt Details',
+    BACK: '← Back to receipts',
+    SHOW_IMAGE: 'Show receipt image',
+    HIDE_IMAGE: 'Hide receipt image',
+    LINE_ITEMS: 'Line Items',
+    SPLITS: 'Split Breakdown',
+    NO_IMAGE: 'No image available',
+    QUANTITY_ABBR: 'qty',
+  },
   ITEM_SETUP: {
     TITLE: 'Set Up Items',
     PROGRESS: (current: number, total: number) => `Item ${current} of ${total}`,
@@ -512,6 +542,7 @@ export const RECEIPTS = {
     BY_ITEM_TAB: 'By Household Item',
     BY_CATEGORY_TAB: 'By Category',
     ADD_AS_NEW_ITEM: (name: string) => `+ Add "${name}" as new item`,
+    GROUP_PLACEHOLDER: 'Group (e.g. veggies)',
   },
 } as const
 
@@ -524,6 +555,11 @@ function ordinal(n: number): string {
   return 'th'
 }
 
+export const SETTINGS = {
+  TITLE: 'Catalog & Bills',
+  SUBTITLE: 'Household item catalog, categories, and recurring bills',
+} as const
+
 export const HOUSEHOLD_DASHBOARD = {
   RENT: {
     TITLE: 'Rent',
@@ -532,6 +568,12 @@ export const HOUSEHOLD_DASHBOARD = {
     PAID_STATUS: (paid: number, total: number) => `${paid} of ${total} paid`,
     ACROSS_EXPENSES: 'across 3 expenses',
     EMPTY: 'No rent expense found — add one in Finances.',
+    OWES_YOU: (name: string, amount: string) => `${name} owes you $${amount}`,
+    OWES_YOU_PAID: (name: string) => `${name} has paid`,
+    YOU_OWE: (name: string, amount: string) => `You owe ${name} $${amount}`,
+    YOU_HAVE_PAID: 'You have paid',
+    THIRD_PARTY_OWES: (name: string, payer: string, amount: string) => `${name} owes ${payer} $${amount}`,
+    THIRD_PARTY_PAID: (name: string) => `${name} has paid`,
   },
   BALANCES: {
     TITLE: 'Balances',

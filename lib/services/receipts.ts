@@ -9,7 +9,7 @@ import {
   RECEIPT_CATEGORY_WITH_OPTIONS,
 } from '@/lib/config'
 import { upsertAliasesBatch } from '@/lib/services/householdItems'
-import type { ReceiptAnalysis, ReceiptLedgerItem, SaveReceiptPayload } from '@/lib/types/receipts'
+import type { ReceiptAnalysis, ReceiptDetail, ReceiptLedgerItem, SaveReceiptPayload } from '@/lib/types/receipts'
 
 type ReceiptAnalysisRaw = Partial<ReceiptAnalysis> & { is_receipt?: boolean }
 
@@ -284,4 +284,74 @@ export async function getReceiptLedger(
   })
 
   return { data: items, error: null }
+}
+
+type ReceiptDetailRow = {
+  id: string
+  image_url: string | null
+  merchant_name: string | null
+  receipt_date: string | null
+  raw_total: number | null
+  receipt_line_items: Array<{
+    id: string
+    description: string
+    amount: number
+    quantity: number | null
+  }>
+  expenses: Array<{
+    id: string
+    total_amount: number
+    expense_categories: { name: string } | null
+    expense_splits: Array<{
+      calculated_amount: number
+      household_members: { nickname: string } | null
+    }>
+  }>
+}
+
+export async function getReceiptDetail(
+  supabase: SupabaseClient,
+  householdId: string,
+  receiptId: string,
+): Promise<ReceiptDetail | null> {
+  const { data, error } = await supabase
+    .from('receipts')
+    .select(
+      'id, image_url, merchant_name, receipt_date, raw_total, ' +
+      'receipt_line_items(id, description, amount, quantity), ' +
+      'expenses(id, total_amount, expense_categories(name), expense_splits(calculated_amount, household_members(nickname)))',
+    )
+    .eq('id', receiptId)
+    .eq('household_id', householdId)
+    .single()
+
+  if (error || !data) return null
+
+  const row = data as unknown as ReceiptDetailRow
+  const expense = row.expenses[0] ?? null
+
+  return {
+    id: row.id,
+    imageUrl: row.image_url,
+    merchantName: row.merchant_name ?? '',
+    receiptDate: row.receipt_date ?? '',
+    rawTotal: row.raw_total ?? 0,
+    categoryName: expense?.expense_categories?.name ?? null,
+    lineItems: row.receipt_line_items.map((item) => ({
+      id: item.id,
+      description: item.description,
+      amount: item.amount,
+      quantity: item.quantity,
+    })),
+    splits: (expense?.expense_splits ?? [])
+      .filter(
+        (s): s is { calculated_amount: number; household_members: { nickname: string } } =>
+          s.household_members !== null,
+      )
+      .map((s) => ({
+        memberNickname: s.household_members.nickname,
+        amount: s.calculated_amount,
+      })),
+    expenseTotal: expense?.total_amount ?? 0,
+  }
 }

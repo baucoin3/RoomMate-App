@@ -44,38 +44,26 @@ export interface RecurringExpense {
   splits: RecurringExpenseSplit[]
 }
 
-export interface BalanceEntry {
-  to_member?: HouseholdMemberSummary
-  from_member?: HouseholdMemberSummary
-  category: { id: string; name: string }
-  amount: number
-  expense_count: number
+export interface OweReceipt {
+  id: string
+  merchant_name: string | null
+  receipt_date: string | null
 }
 
-export interface BalanceSummary {
-  you_owe: BalanceEntry[]
-  owed_to_you: BalanceEntry[]
-}
-
-export interface RoommateShare {
-  member_id: string
-  nickname: string
-  amount: number
-}
-
-export interface UpcomingBill {
-  recurring_expense_id: string
+export interface OweItem {
+  split_id: string
+  expense_id: string
   description: string
-  category_name: string
-  due_date: string
-  is_overdue: boolean
-  days_until: number
-  alert_days_before: number
-  your_share: number
-  payer: HouseholdMemberSummary
-  you_are_payer: boolean
-  /** Populated only when you_are_payer — one entry per non-payer roommate. */
-  roommate_shares: RoommateShare[]
+  date: string
+  amount: number
+  debtor?: HouseholdMemberSummary
+  creditor?: HouseholdMemberSummary
+  receipt: OweReceipt | null
+}
+
+export interface OweSummary {
+  owed_to_you: OweItem[]
+  you_owe: OweItem[]
 }
 
 export interface ActivityItem {
@@ -94,4 +82,41 @@ export interface ActivityItem {
     calculated_amount: number
     is_settled: boolean
   }[]
+}
+
+export type RecurringBillCycleStatus = 'not_logged' | 'logged'
+
+export interface RecurringBillMemberStatus {
+  member_id: string
+  member_name: string
+  share_amount: number
+  is_payer: boolean
+  is_viewer: boolean
+  /** Only meaningful when cycle_status === 'logged' */
+  is_settled: boolean | null
+  /** Only when logged — use for settle button */
+  split_id: string | null
+}
+
+export interface RecurringBillOverview {
+  recurring_expense_id: string
+  description: string
+  category_name: string | null
+  total_amount: number
+  due_day_of_month: number
+  alert_days_before: number
+  is_active: boolean
+  payer: HouseholdMemberSummary
+  cycle_status: RecurringBillCycleStatus
+  /** ISO date of the due date for the current billing cycle */
+  cycle_due_date: string
+  /** Present when cycle_status === 'logged' */
+  cycle_expense_id: string | null
+  /** Per-member rows for this cycle */
+  members: RecurringBillMemberStatus[]
+  /** Convenience totals for the viewer */
+  viewer_owes_amount: number
+  viewer_is_payer: boolean
+  viewer_collect_total: number
+  viewer_collect_unsettled_total: number
 }

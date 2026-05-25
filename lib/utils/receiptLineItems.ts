@@ -105,12 +105,19 @@ export function isLineItemReadyToSave(
   return isLineItemConfirmed(c) && hasValidSplitAssignment(c, memberCount, ctx)
 }
 
+export function isLineItemAutoMatched(c: LineItemConfig): boolean {
+  return (
+    c.householdItemId !== null ||
+    (c.categoryAutoMatched && c.categoryId !== null)
+  )
+}
+
 export function getLineItemStatus(
   c: LineItemConfig,
   memberCount: number,
   ctx?: SplitResolverContext,
 ): LineItemStatus {
-  if (c.householdItemId !== null) {
+  if (isLineItemAutoMatched(c)) {
     if (ctx && !hasValidSplitAssignment(c, memberCount, ctx)) return 'setup'
     return 'matched'
   }

@@ -22,6 +22,7 @@ export const ROUTES = {
   RECIPE_EDIT: (householdId: string, recipeId: string) => `/dashboard/${householdId}/recipes/${recipeId}/edit`,
   HOUSEHOLD_RECEIPTS: (id: string) => `/dashboard/${id}/receipts`,
   RECEIPT_NEW: (id: string) => `/dashboard/${id}/receipts/new`,
+  RECEIPT_DETAIL: (householdId: string, receiptId: string) => `/dashboard/${householdId}/receipts/${receiptId}`,
 } as const
 
 export type AppRoute = string

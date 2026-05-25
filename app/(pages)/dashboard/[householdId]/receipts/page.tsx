@@ -5,7 +5,7 @@ import { ROUTES } from '@/lib/constants/routes'
 import { RECEIPTS } from '@/locales/en'
 import { getReceiptLedger } from '@/lib/services/receipts'
 import LedgerHeader from '@/components/receipts/LedgerHeader'
-import ReceiptCard from '@/components/receipts/ReceiptCard'
+import ReceiptLedgerClient from '@/components/receipts/ReceiptLedgerClient'
 
 interface ReceiptsPageProps {
   params: { householdId: string }
@@ -36,6 +36,10 @@ export default async function ReceiptsPage({ params }: ReceiptsPageProps) {
   }
   const items = receipts ?? []
 
+  const categories = Array.from(
+    new Set(items.map((r) => r.category_name).filter((c): c is string => c !== null)),
+  )
+
   return (
     <div className="flex flex-col pt-1 pb-24 md:pb-4">
       <div className="flex items-center justify-between mb-6">
@@ -61,11 +65,11 @@ export default async function ReceiptsPage({ params }: ReceiptsPageProps) {
           <p>{RECEIPTS.EMPTY}</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {items.map((receipt) => (
-            <ReceiptCard key={receipt.id} receipt={receipt} />
-          ))}
-        </div>
+        <ReceiptLedgerClient
+          receipts={items}
+          categories={categories}
+          householdId={params.householdId}
+        />
       )}
     </div>
   )
