@@ -82,6 +82,11 @@ export const RECEIPT_CATEGORY_WITH_OPTIONS = (categories: string[]) =>
 /** Appended to RECEIPT_ANALYSIS_SYSTEM_PROMPT when no expense categories exist */
 export const RECEIPT_CATEGORY_NONE = 'Omit all "suggested_category_name" fields.'
 
+// ─── Email (Resend) ────────────────────────────────────────────────────────
+
+export const RESEND_API_KEY = process.env.RESEND_API_KEY ?? ''
+export const EMAIL_FROM_ADDRESS = process.env.EMAIL_FROM_ADDRESS ?? 'splits@roommate-app.com'
+
 // ─── Auth ──────────────────────────────────────────────────────────────────
 
 /** Minimum password length enforced on the client before submitting */

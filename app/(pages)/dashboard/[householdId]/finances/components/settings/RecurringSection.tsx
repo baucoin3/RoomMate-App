@@ -2,15 +2,14 @@
 
 import { useState } from 'react'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
-import type { RecurringExpense, ExpenseCategory, HouseholdMemberSummary, RecurringExpenseSplit } from '@/lib/types/finances'
+import type { RecurringExpense, HouseholdMemberSummary, RecurringExpenseSplit } from '@/lib/types/finances'
 import { FINANCES } from '@/locales/en'
 import SplitEditor, { type SplitValue } from '@/components/SplitEditor'
-import { buildDefaultSplits } from '@/lib/utils/splits'
+import { buildDefaultSplits, splitsSumTo100 } from '@/lib/utils/splits'
 
 interface RecurringSectionProps {
   householdId: string
   recurring: RecurringExpense[]
-  categories: ExpenseCategory[]
   members: HouseholdMemberSummary[]
   onRecurringChanged: (updater: (r: RecurringExpense[]) => RecurringExpense[]) => void
 }
@@ -32,13 +31,12 @@ function getCurrentDueDay(day = new Date().getDate()): string {
 interface RecurringCardProps {
   expense: RecurringExpense
   householdId: string
-  categories: ExpenseCategory[]
   members: HouseholdMemberSummary[]
   onUpdated: (updated: RecurringExpense) => void
   onDeleted: (id: string) => void
 }
 
-function RecurringCard({ expense, householdId, categories, members, onUpdated, onDeleted }: RecurringCardProps) {
+function RecurringCard({ expense, householdId, members, onUpdated, onDeleted }: RecurringCardProps) {
   const [editing, setEditing] = useState(false)
   const [toggling, setToggling] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -76,7 +74,6 @@ function RecurringCard({ expense, householdId, categories, members, onUpdated, o
     return (
       <RecurringForm
         householdId={householdId}
-        categories={categories}
         members={members}
         initialExpense={expense}
         onSaved={(updated) => {
@@ -109,9 +106,6 @@ function RecurringCard({ expense, householdId, categories, members, onUpdated, o
               {expense.is_active ? FINANCES.SETTINGS.ACTIVE_BADGE : FINANCES.SETTINGS.INACTIVE_BADGE}
             </span>
           </div>
-          {expense.category_name && (
-            <span className="text-xs text-indigo-400">{expense.category_name}</span>
-          )}
         </div>
         <span className="text-sm font-semibold text-white shrink-0">${Number(expense.amount).toFixed(2)}</span>
       </div>
@@ -154,18 +148,16 @@ function RecurringCard({ expense, householdId, categories, members, onUpdated, o
 
 interface AddRecurringFormProps {
   householdId: string
-  categories: ExpenseCategory[]
   members: HouseholdMemberSummary[]
   initialExpense?: RecurringExpense
   onSaved: (expense: RecurringExpense) => void
   onCancel: () => void
 }
 
-function RecurringForm({ householdId, categories, members, initialExpense, onSaved, onCancel }: AddRecurringFormProps) {
+function RecurringForm({ householdId, members, initialExpense, onSaved, onCancel }: AddRecurringFormProps) {
   const isEditing = Boolean(initialExpense)
   const [description, setDescription] = useState(initialExpense?.description ?? '')
   const [amount, setAmount] = useState(initialExpense ? String(initialExpense.amount) : '')
-  const [categoryId, setCategoryId] = useState(initialExpense?.category_id ?? '')
   const [payerId, setPayerId] = useState(initialExpense?.paid_by_member_id ?? members[0]?.id ?? '')
   const [dueDay, setDueDay] = useState(() => initialExpense ? String(initialExpense.due_day_of_month) : getCurrentDueDay())
   const [alertDays, setAlertDays] = useState(initialExpense ? String(initialExpense.alert_days_before) : '3')
@@ -175,7 +167,7 @@ function RecurringForm({ householdId, categories, members, initialExpense, onSav
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const splitsValid = Math.abs(splits.reduce((s, x) => s + x.percentage, 0) - 100) <= 0.01
+  const splitsValid = splitsSumTo100(splits)
   const amountNum = parseFloat(amount)
   const dueDayNum = Number(dueDay)
   const alertDaysNum = parseInt(alertDays) || 3
@@ -206,7 +198,7 @@ function RecurringForm({ householdId, categories, members, initialExpense, onSav
       const payload = {
         description: description.trim(),
         amount: amountNum,
-        category_id: categoryId || null,
+        category_id: null,
         paid_by_member_id: payerId,
         due_day_of_month: dueDayNum,
         alert_days_before: alertDaysNum,
@@ -231,8 +223,8 @@ function RecurringForm({ householdId, categories, members, initialExpense, onSav
       const savedExpense: RecurringExpense = {
         id: expenseId,
         household_id: householdId,
-        category_id: categoryId || null,
-        category_name: categories.find((c) => c.id === categoryId)?.name,
+        category_id: null,
+        category_name: undefined,
         description: description.trim(),
         amount: amountNum,
         paid_by_member_id: payerId,
@@ -261,32 +253,17 @@ function RecurringForm({ householdId, categories, members, initialExpense, onSav
         className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-white/25 outline-none focus:border-indigo-500"
       />
 
-      <div className="flex gap-2">
-        <div className="flex-1">
-          <label className="text-xs text-white/40 mb-1 block">Amount ($)</label>
-          <input
-            type="number"
-            min={0}
-            step={0.01}
-            value={amount}
-            onChange={(e) => handleBillAmountChange(e.target.value)}
-            placeholder="0.00"
-            className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
-          />
-        </div>
-        <div className="flex-1">
-          <label className="text-xs text-white/40 mb-1 block">Category</label>
-          <select
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className="w-full h-[38px] rounded-lg bg-[#1c1c24] border border-white/10 px-2 text-sm text-white outline-none focus:border-indigo-500"
-          >
-            <option value="">None</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </div>
+      <div>
+        <label className="text-xs text-white/40 mb-1 block">Amount ($)</label>
+        <input
+          type="number"
+          min={0}
+          step={0.01}
+          value={amount}
+          onChange={(e) => handleBillAmountChange(e.target.value)}
+          placeholder="0.00"
+          className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
+        />
       </div>
 
       <div className="flex gap-2">
@@ -352,7 +329,7 @@ function RecurringForm({ householdId, categories, members, initialExpense, onSav
   )
 }
 
-export default function RecurringSection({ householdId, recurring, categories, members, onRecurringChanged }: RecurringSectionProps) {
+export default function RecurringSection({ householdId, recurring, members, onRecurringChanged }: RecurringSectionProps) {
   const [adding, setAdding] = useState(false)
 
   return (
@@ -362,7 +339,6 @@ export default function RecurringSection({ householdId, recurring, categories, m
           key={expense.id}
           expense={expense}
           householdId={householdId}
-          categories={categories}
           members={members}
           onUpdated={(updated) => onRecurringChanged((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))}
           onDeleted={(id) => onRecurringChanged((prev) => prev.filter((r) => r.id !== id))}
@@ -376,7 +352,6 @@ export default function RecurringSection({ householdId, recurring, categories, m
       {adding ? (
         <RecurringForm
           householdId={householdId}
-          categories={categories}
           members={members}
           onSaved={(expense) => { onRecurringChanged((prev) => [...prev, expense]); setAdding(false) }}
           onCancel={() => setAdding(false)}

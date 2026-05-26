@@ -7,6 +7,7 @@ import type {
   ActivityItem,
   RecurringBillOverview,
   RecurringBillMemberStatus,
+  SplitParticipant,
 } from '@/lib/types/finances'
 import { FINANCES } from '@/locales/en'
 import { getCurrentCycleDueDate, isDateInCycle } from '@/lib/utils/recurringCycle'
@@ -151,15 +152,22 @@ export async function getOweSummary(
     receipt_id: string | null
     receipts: ReceiptRow
   }
-  type SplitRowA = {
+  type SplitRowMemberDebt = {
     id: string
     household_member_id: string
     calculated_amount: number
     expenses: ExpenseRowA
     debtor: { id: string; nickname: string } | null
   }
+  type SplitRowGuestDebt = {
+    id: string
+    guest_id: string
+    calculated_amount: number
+    expenses: ExpenseRowA
+    debtor: { id: string; name: string } | null
+  }
 
-  type ExpenseRowB = {
+  type ExpenseRowMemberCred = {
     id: string
     description: string
     date: string
@@ -168,14 +176,29 @@ export async function getOweSummary(
     receipts: ReceiptRow
     creditor: { id: string; nickname: string } | null
   }
-  type SplitRowB = {
+  type ExpenseRowGuestCred = {
+    id: string
+    description: string
+    date: string
+    receipt_id: string | null
+    paid_by_guest_id: string
+    receipts: ReceiptRow
+    creditor: { id: string; name: string } | null
+  }
+  type SplitRowYouOweMember = {
     id: string
     household_member_id: string
     calculated_amount: number
-    expenses: ExpenseRowB
+    expenses: ExpenseRowMemberCred
+  }
+  type SplitRowYouOweGuest = {
+    id: string
+    household_member_id: string
+    calculated_amount: number
+    expenses: ExpenseRowGuestCred
   }
 
-  const [owedRes, youOweRes] = await Promise.all([
+  const [owedMembersRes, owedGuestsRes, youOweMembersRes, youOweGuestsRes] = await Promise.all([
     supabase
       .from('expense_splits')
       .select(`
@@ -200,6 +223,26 @@ export async function getOweSummary(
       .from('expense_splits')
       .select(`
         id,
+        guest_id,
+        calculated_amount,
+        expenses!inner (
+          id,
+          description,
+          date,
+          receipt_id,
+          receipts ( id, merchant_name, receipt_date )
+        ),
+        debtor:household_guests!guest_id ( id, name )
+      `)
+      .eq('expenses.household_id', householdId)
+      .eq('expenses.paid_by_member_id', currentMemberId)
+      .not('guest_id', 'is', null)
+      .eq('is_settled', false),
+
+    supabase
+      .from('expense_splits')
+      .select(`
+        id,
         household_member_id,
         calculated_amount,
         expenses!inner (
@@ -215,39 +258,93 @@ export async function getOweSummary(
       .eq('expenses.household_id', householdId)
       .eq('household_member_id', currentMemberId)
       .neq('expenses.paid_by_member_id', currentMemberId)
+      .not('expenses.paid_by_member_id', 'is', null)
+      .eq('is_settled', false),
+
+    supabase
+      .from('expense_splits')
+      .select(`
+        id,
+        household_member_id,
+        calculated_amount,
+        expenses!inner (
+          id,
+          description,
+          date,
+          receipt_id,
+          paid_by_guest_id,
+          receipts ( id, merchant_name, receipt_date ),
+          creditor:household_guests!paid_by_guest_id ( id, name )
+        )
+      `)
+      .eq('expenses.household_id', householdId)
+      .eq('household_member_id', currentMemberId)
+      .not('expenses.paid_by_guest_id', 'is', null)
       .eq('is_settled', false),
   ])
 
-  if (owedRes.error) return { data: null, error: owedRes.error.message }
-  if (youOweRes.error) return { data: null, error: youOweRes.error.message }
+  if (owedMembersRes.error) return { data: null, error: owedMembersRes.error.message }
+  if (owedGuestsRes.error) return { data: null, error: owedGuestsRes.error.message }
+  if (youOweMembersRes.error) return { data: null, error: youOweMembersRes.error.message }
+  if (youOweGuestsRes.error) return { data: null, error: youOweGuestsRes.error.message }
 
-  const owed_to_you: OweItem[] = (owedRes.data as unknown as SplitRowA[])
-    .map((s) => ({
+  const toParticipant = (
+    p: { id: string; nickname?: string; name?: string } | null | undefined,
+    type: SplitParticipant['type'],
+  ): SplitParticipant | undefined => {
+    if (!p) return undefined
+    return { type, id: p.id, nickname: p.nickname ?? p.name ?? 'Unknown' }
+  }
+
+  const owed_to_you: OweItem[] = [
+    ...(owedMembersRes.data as unknown as SplitRowMemberDebt[]).map((s) => ({
       split_id: s.id,
       expense_id: s.expenses.id,
       description: s.expenses.description,
       date: s.expenses.date,
       amount: Math.round(Number(s.calculated_amount) * 100) / 100,
-      debtor: s.debtor ?? undefined,
+      debtor: toParticipant(s.debtor, 'member'),
       receipt: s.expenses.receipts
         ? { id: s.expenses.receipts.id, merchant_name: s.expenses.receipts.merchant_name, receipt_date: s.expenses.receipts.receipt_date }
         : null,
-    }))
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-
-  const you_owe: OweItem[] = (youOweRes.data as unknown as SplitRowB[])
-    .map((s) => ({
+    })),
+    ...(owedGuestsRes.data as unknown as SplitRowGuestDebt[]).map((s) => ({
       split_id: s.id,
       expense_id: s.expenses.id,
       description: s.expenses.description,
       date: s.expenses.date,
       amount: Math.round(Number(s.calculated_amount) * 100) / 100,
-      creditor: s.expenses.creditor ?? undefined,
+      debtor: toParticipant(s.debtor, 'guest'),
       receipt: s.expenses.receipts
         ? { id: s.expenses.receipts.id, merchant_name: s.expenses.receipts.merchant_name, receipt_date: s.expenses.receipts.receipt_date }
         : null,
-    }))
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+  const you_owe: OweItem[] = [
+    ...(youOweMembersRes.data as unknown as SplitRowYouOweMember[]).map((s) => ({
+      split_id: s.id,
+      expense_id: s.expenses.id,
+      description: s.expenses.description,
+      date: s.expenses.date,
+      amount: Math.round(Number(s.calculated_amount) * 100) / 100,
+      creditor: toParticipant(s.expenses.creditor, 'member'),
+      receipt: s.expenses.receipts
+        ? { id: s.expenses.receipts.id, merchant_name: s.expenses.receipts.merchant_name, receipt_date: s.expenses.receipts.receipt_date }
+        : null,
+    })),
+    ...(youOweGuestsRes.data as unknown as SplitRowYouOweGuest[]).map((s) => ({
+      split_id: s.id,
+      expense_id: s.expenses.id,
+      description: s.expenses.description,
+      date: s.expenses.date,
+      amount: Math.round(Number(s.calculated_amount) * 100) / 100,
+      creditor: toParticipant(s.expenses.creditor, 'guest'),
+      receipt: s.expenses.receipts
+        ? { id: s.expenses.receipts.id, merchant_name: s.expenses.receipts.merchant_name, receipt_date: s.expenses.receipts.receipt_date }
+        : null,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
   return { data: { owed_to_you, you_owe }, error: null }
 }
@@ -267,13 +364,17 @@ export async function getRecentActivity(
       description,
       total_amount,
       paid_by_member_id,
+      paid_by_guest_id,
       payer:household_members!paid_by_member_id ( id, nickname ),
+      guest_payer:household_guests!paid_by_guest_id ( id, name ),
       category:expense_categories ( name ),
       expense_splits (
         household_member_id,
+        guest_id,
         calculated_amount,
         is_settled,
-        member:household_members ( id, nickname )
+        member:household_members ( id, nickname ),
+        guest:household_guests ( id, name )
       )
     `)
     .eq('household_id', householdId)
@@ -283,10 +384,12 @@ export async function getRecentActivity(
   if (error) return { data: null, error: error.message }
 
   type SplitRow = {
-    household_member_id: string
+    household_member_id: string | null
+    guest_id: string | null
     calculated_amount: number
     is_settled: boolean
     member: { id: string; nickname: string } | null
+    guest: { id: string; name: string } | null
   }
 
   type ExpenseRow = {
@@ -294,26 +397,38 @@ export async function getRecentActivity(
     date: string
     description: string
     total_amount: number
-    paid_by_member_id: string
+    paid_by_member_id: string | null
+    paid_by_guest_id: string | null
     payer: { id: string; nickname: string } | null
+    guest_payer: { id: string; name: string } | null
     category: { name: string } | null
     expense_splits: SplitRow[]
   }
 
   const items: ActivityItem[] = (data as unknown as ExpenseRow[]).map((e) => {
     const yourSplitRow = e.expense_splits.find((s) => s.household_member_id === currentMemberId)
+    const paidBy: SplitParticipant = e.payer
+      ? { type: 'member', id: e.payer.id, nickname: e.payer.nickname }
+      : e.guest_payer
+        ? { type: 'guest', id: e.guest_payer.id, nickname: e.guest_payer.name }
+        : { type: 'member', id: e.paid_by_member_id ?? '', nickname: 'Unknown' }
+
     return {
       id: e.id,
       date: e.date,
       description: e.description,
       category_name: e.category?.name ?? '',
       total_amount: Number(e.total_amount),
-      paid_by: e.payer ?? { id: e.paid_by_member_id, nickname: 'Unknown' },
+      paid_by: paidBy,
       your_split: yourSplitRow
         ? { calculated_amount: Number(yourSplitRow.calculated_amount), is_settled: yourSplitRow.is_settled }
         : null,
       all_splits: e.expense_splits.map((s) => ({
-        member: s.member ?? { id: s.household_member_id, nickname: 'Unknown' },
+        participant: s.member
+          ? { type: 'member' as const, id: s.member.id, nickname: s.member.nickname }
+          : s.guest
+            ? { type: 'guest' as const, id: s.guest.id, nickname: s.guest.name }
+            : { type: 'member' as const, id: s.household_member_id ?? '', nickname: 'Unknown' },
         calculated_amount: Number(s.calculated_amount),
         is_settled: s.is_settled,
       })),

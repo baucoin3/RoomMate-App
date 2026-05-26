@@ -12,6 +12,11 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+function payerLabel(paidBy: ActivityItem['paid_by']): string {
+  if (paidBy.type === 'guest') return FINANCES.OVERVIEW.PAID_BY_GUEST(paidBy.nickname)
+  return paidBy.nickname
+}
+
 function ActivityRow({ item }: { item: ActivityItem }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -26,7 +31,7 @@ function ActivityRow({ item }: { item: ActivityItem }) {
 
         <div className="flex-1 min-w-0">
           <div className="text-sm text-white truncate">{item.description}</div>
-          <div className="text-xs text-white/40 truncate">{item.category_name} · {item.paid_by.nickname}</div>
+          <div className="text-xs text-white/40 truncate">{item.category_name} · {payerLabel(item.paid_by)}</div>
         </div>
 
         <div className="flex flex-col items-end shrink-0 gap-1">
@@ -60,10 +65,17 @@ function ActivityRow({ item }: { item: ActivityItem }) {
 
       {expanded && item.all_splits && item.all_splits.length > 0 && (
         <div className="px-4 pb-3 pt-1 flex flex-col gap-1.5">
-          <div className="text-xs text-white/30 font-medium mb-1 ml-14">Per-member split</div>
+          <div className="text-xs text-white/30 font-medium mb-1 ml-14">{FINANCES.OVERVIEW.SPLITS_LABEL}</div>
           {item.all_splits.map((s, i) => (
             <div key={i} className="flex items-center gap-3 ml-14">
-              <span className="flex-1 text-xs text-white/60">{s.member.nickname}</span>
+              <span className="flex-1 text-xs text-white/60 flex items-center gap-1">
+                {s.participant.nickname}
+                {s.participant.type === 'guest' && (
+                  <span className="text-[10px] px-1 py-0.5 rounded-full bg-violet-500/20 text-violet-300">
+                    {FINANCES.OVERVIEW.GUEST_BADGE}
+                  </span>
+                )}
+              </span>
               <span className="text-xs text-white/60">${s.calculated_amount.toFixed(2)}</span>
               <span className={`text-xs px-1.5 py-0.5 rounded-full ${
                 s.is_settled

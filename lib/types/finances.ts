@@ -3,6 +3,12 @@ export interface HouseholdMemberSummary {
   nickname: string
 }
 
+export interface SplitParticipant {
+  type: 'member' | 'guest'
+  id: string
+  nickname: string
+}
+
 export interface CategorySplit {
   id: string
   category_id: string
@@ -56,8 +62,8 @@ export interface OweItem {
   description: string
   date: string
   amount: number
-  debtor?: HouseholdMemberSummary
-  creditor?: HouseholdMemberSummary
+  debtor?: SplitParticipant
+  creditor?: SplitParticipant
   receipt: OweReceipt | null
 }
 
@@ -66,22 +72,24 @@ export interface OweSummary {
   you_owe: OweItem[]
 }
 
+export interface ActivitySplitRow {
+  participant: SplitParticipant
+  calculated_amount: number
+  is_settled: boolean
+}
+
 export interface ActivityItem {
   id: string
   date: string
   description: string
   category_name: string
   total_amount: number
-  paid_by: HouseholdMemberSummary
+  paid_by: SplitParticipant
   your_split: {
     calculated_amount: number
     is_settled: boolean
   } | null
-  all_splits?: {
-    member: HouseholdMemberSummary
-    calculated_amount: number
-    is_settled: boolean
-  }[]
+  all_splits?: ActivitySplitRow[]
 }
 
 export type RecurringBillCycleStatus = 'not_logged' | 'logged'

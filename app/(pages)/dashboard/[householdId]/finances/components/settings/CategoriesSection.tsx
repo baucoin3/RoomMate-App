@@ -5,7 +5,7 @@ import { apiClient, getErrorMessage } from '@/lib/api/client'
 import type { ExpenseCategory, HouseholdMemberSummary, CategorySplit } from '@/lib/types/finances'
 import { FINANCES } from '@/locales/en'
 import SplitEditor from '@/components/SplitEditor'
-import { buildDefaultSplits } from '@/lib/utils/splits'
+import { buildDefaultSplits, splitsSumTo100 } from '@/lib/utils/splits'
 
 interface CategoriesSectionProps {
   householdId: string
@@ -33,7 +33,7 @@ function CategoryRow({ category, members, onUpdated, onDeleted }: CategoryRowPro
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
 
-  const splitsValid = Math.abs(splits.reduce((s, x) => s + x.percentage, 0) - 100) <= 0.01
+  const splitsValid = splitsSumTo100(splits)
 
   function resetEditing() {
     setEditing(false)
@@ -183,7 +183,7 @@ export default function CategoriesSection({ householdId, categories, members, on
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const newSplitsValid = Math.abs(newSplits.reduce((s, x) => s + x.percentage, 0) - 100) <= 0.01
+  const newSplitsValid = splitsSumTo100(newSplits)
 
   async function handleAddCategory() {
     if (!newName.trim() || !newSplitsValid) return

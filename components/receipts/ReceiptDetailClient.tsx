@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { ROUTES } from '@/lib/constants/routes'
-import { RECEIPTS } from '@/locales/en'
+import { RECEIPTS, GUESTS } from '@/locales/en'
 import type { ReceiptDetail } from '@/lib/types/receipts'
 
 interface ReceiptDetailClientProps {
@@ -108,9 +108,16 @@ export default function ReceiptDetailClient({ receipt, householdId }: ReceiptDet
             {RECEIPTS.DETAIL.SPLITS}
           </h2>
           <div className="flex flex-col gap-2">
-            {receipt.splits.map((split) => (
-              <div key={split.memberNickname} className="flex justify-between items-center">
-                <p className="text-white/80 text-sm">{split.memberNickname}</p>
+            {receipt.splits.map((split, i) => (
+              <div key={`${split.participantType}-${split.displayName}-${i}`} className="flex justify-between items-center">
+                <p className="text-white/80 text-sm flex items-center gap-1.5">
+                  {split.displayName}
+                  {split.participantType === 'guest' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-300">
+                      {GUESTS.SPLIT_LABEL.GUEST_BADGE}
+                    </span>
+                  )}
+                </p>
                 <p className="text-white font-mono text-sm">{formatCurrency(split.amount)}</p>
               </div>
             ))}

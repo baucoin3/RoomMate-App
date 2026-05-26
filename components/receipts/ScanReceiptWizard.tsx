@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import { RECEIPTS } from '@/locales/en'
@@ -9,16 +9,23 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, RECEIPTS_BUCKET, RECEIPT_IMAGE_MAX_BYT
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import LineItemsAccordion from '@/components/receipts/LineItemsAccordion'
 import ItemSetupModal from '@/components/receipts/ItemSetupModal'
+import AddParticipantsControl from '@/components/receipts/AddParticipantsControl'
 import { matchLineToHouseholdItem } from '@/lib/utils/itemMatching'
+import { normalizePercentages, roundCurrency } from '@/lib/utils/splits'
 import {
+  applyReceiptGuestChange,
+  syncReceiptGuestsToConfigs,
+  categoryHasValidSplits,
   firstUnconfiguredIndex,
-  getLineItemSplitLines,
+  getDisplaySplitLines,
+  getDisplaySplitsForLineItem,
   getLineItemStatus,
-  getSplitsForLineItem,
   hasValidSplitAssignment,
   isLineItemReadyToSave,
   lineItemStatusLabel,
   lineItemStatusPillClass,
+  shouldCreateHouseholdItemOnSave,
+  shouldUpsertAliasesOnSave,
   usesDefaultEqualSplit,
   withConfiguredFlags,
   type SplitResolverContext,
@@ -32,6 +39,7 @@ import type {
   MatchSource,
 } from '@/lib/types/receipts'
 import type { HouseholdItem, HouseholdItemWithAliases } from '@/lib/types/householdItems'
+import type { HouseholdGuest } from '@/lib/types/guests'
 
 interface CategorySplit {
   household_member_id: string
@@ -55,7 +63,15 @@ interface Props {
 
 type Step = 1 | 2 | 3
 
-const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+function payerKey(type: 'member' | 'guest', id: string): string {
+  return `${type}:${id}`
+}
+
+function parsePayerKey(key: string): { type: 'member' | 'guest'; id: string } | null {
+  const [type, id] = key.split(':')
+  if ((type === 'member' || type === 'guest') && id) return { type, id }
+  return null
+}
 
 function StepIndicator({ current }: { current: Step }) {
   const steps: { num: Step; label: string }[] = [
@@ -90,6 +106,8 @@ function StepIndicator({ current }: { current: Step }) {
     </div>
   )
 }
+
+const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 function categorySplitsToRows(cat: Category): LineItemSplitRow[] {
   return cat.splits.map((s) => ({
@@ -138,6 +156,18 @@ function matchLineItems(
     ...item,
     aliases: item.aliases ?? [],
   }))
+
+  const splitCtx: SplitResolverContext = {
+    categories: categories.map((c) => ({
+      id: c.id,
+      splits: c.splits.map((s) => ({
+        household_member_id: s.household_member_id,
+        percentage: s.percentage,
+        nickname: s.nickname,
+      })),
+    })),
+    allMembers: [],
+  }
 
   return lineItems.map((item) => {
     const match = matchLineToHouseholdItem(item.description, itemsWithAliases)
@@ -195,12 +225,20 @@ function matchLineItems(
       match.matchType === 'fuzzy' ||
       matchSource === 'ai'
 
-    const setupMode: 'item' | 'category' = householdItemId !== null ? 'item' : 'category'
-
     const categoryAutoMatched =
       householdItemId === null &&
       itemDefaults.categoryId !== null &&
       item.suggested_category_name != null
+
+    const setupMode: 'item' | 'category' = categoryAutoMatched ? 'category' : 'item'
+
+    if (
+      categoryAutoMatched &&
+      itemDefaults.categoryId &&
+      categoryHasValidSplits(itemDefaults.categoryId, splitCtx)
+    ) {
+      configured = true
+    }
 
     return {
       description: item.description,
@@ -210,7 +248,9 @@ function matchLineItems(
       categoryId: itemDefaults.categoryId,
       useCustomSplit: itemDefaults.useCustomSplit,
       customSplits: itemDefaults.customSplits,
-      saveAsHouseholdItem: householdItemId === null,
+      guestSplits: [],
+      splitCustomized: false,
+      saveAsHouseholdItem: false,
       householdItemId,
       resolvedItemName,
       matchSource,
@@ -230,27 +270,74 @@ function computeAggregateSplits(
   configs: LineItemConfig[],
   ctx: SplitResolverContext,
   totalAmount: number,
-): Array<{ household_member_id: string; percentage: number; calculated_amount: number }> {
+): Array<{ household_member_id?: string; guest_id?: string; percentage: number; calculated_amount: number }> {
   if (configs.length === 0 || totalAmount <= 0) return []
 
   const memberTotals = configs.reduce<Record<string, number>>((acc, config) => {
     const weight = config.amount / totalAmount
-    const splits = getSplitsForLineItem(config, ctx)
-    return splits.reduce(
-      (inner, s) => ({
-        ...inner,
-        [s.household_member_id]:
-          (inner[s.household_member_id] ?? 0) + s.percentage * weight,
-      }),
-      acc,
-    )
+    const displayRows = getDisplaySplitsForLineItem(config, ctx)
+    return displayRows.reduce((inner, row) => {
+      if (row.type === 'member') {
+        return {
+          ...inner,
+          [row.id]: (inner[row.id] ?? 0) + row.percentage * weight,
+        }
+      }
+      return inner
+    }, acc)
   }, {})
 
-  return Object.entries(memberTotals).map(([memberId, pct]) => ({
+  const guestTotals = configs.reduce<Record<string, number>>((acc, config) => {
+    const weight = config.amount / totalAmount
+    const displayRows = getDisplaySplitsForLineItem(config, ctx)
+    return displayRows.reduce((inner, row) => {
+      if (row.type === 'guest') {
+        return {
+          ...inner,
+          [row.id]: (inner[row.id] ?? 0) + row.percentage * weight,
+        }
+      }
+      return inner
+    }, acc)
+  }, {})
+
+  const memberRows = Object.entries(memberTotals).map(([memberId, pct]) => ({
     household_member_id: memberId,
-    percentage: Math.round(pct * 100) / 100,
-    calculated_amount: Math.round((pct / 100) * totalAmount * 100) / 100,
+    percentage: roundCurrency(pct),
+    calculated_amount: roundCurrency((pct / 100) * totalAmount),
   }))
+
+  const guestRows = Object.entries(guestTotals).map(([guestId, pct]) => ({
+    guest_id: guestId,
+    percentage: roundCurrency(pct),
+    calculated_amount: roundCurrency((pct / 100) * totalAmount),
+  }))
+
+  const allRows = [...memberRows, ...guestRows]
+  if (allRows.length === 0) return []
+
+  let pcts = allRows.map((r) => r.percentage)
+  const rawTotal = pcts.reduce((sum, p) => sum + p, 0)
+  if (rawTotal > 100.01) {
+    console.error('[computeAggregateSplits] aggregate percentage exceeds 100%', rawTotal)
+    const scale = 100 / rawTotal
+    pcts = pcts.map((p) => p * scale)
+  }
+  const normalized = normalizePercentages(pcts)
+  allRows.forEach((row, i) => {
+    row.percentage = normalized[i]
+    row.calculated_amount = roundCurrency((row.percentage / 100) * totalAmount)
+  })
+
+  const amountSum = allRows.reduce((sum, r) => sum + r.calculated_amount, 0)
+  const amountDrift = roundCurrency(totalAmount - amountSum)
+  if (amountDrift !== 0) {
+    allRows[allRows.length - 1].calculated_amount = roundCurrency(
+      allRows[allRows.length - 1].calculated_amount + amountDrift,
+    )
+  }
+
+  return allRows
 }
 
 export default function ScanReceiptWizard({
@@ -283,7 +370,10 @@ export default function ScanReceiptWizard({
 
   const [categories, setCategories] = useState<Category[]>(initialCategories)
   const [description, setDescription] = useState('')
-  const [paidByMemberId, setPaidByMemberId] = useState(memberId)
+  const [paidByKey, setPaidByKey] = useState(() => payerKey('member', memberId))
+  const [householdGuests, setHouseholdGuests] = useState<HouseholdGuest[]>([])
+  const [receiptGuests, setReceiptGuests] = useState<HouseholdGuest[]>([])
+  const receiptGuestsRef = useRef<HouseholdGuest[]>([])
   const [lineItemConfigs, setLineItemConfigs] = useState<LineItemConfig[]>([])
   const [showItemModal, setShowItemModal] = useState(false)
   const [lastModalIndex, setLastModalIndex] = useState<number | null>(null)
@@ -297,6 +387,17 @@ export default function ScanReceiptWizard({
 
   const memberCount = members.length
   const splitResolverCtx: SplitResolverContext = { categories, allMembers: members }
+
+  useEffect(() => {
+    receiptGuestsRef.current = receiptGuests
+  }, [receiptGuests])
+
+  useEffect(() => {
+    apiClient
+      .get<{ data: HouseholdGuest[] }>(`/api/guests?householdId=${householdId}`)
+      .then((res) => setHouseholdGuests(res.data.data ?? []))
+      .catch((err) => console.error('[ScanReceiptWizard] load guests', err))
+  }, [householdId])
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     setFileError('')
@@ -391,13 +492,20 @@ export default function ScanReceiptWizard({
     }
   }
 
-  function enterStep3() {
+  function enterSplitsStep() {
     const name = merchantName.trim()
     const date = receiptDate.trim()
     const prefilled = name && date ? `${name} — ${date}` : name || date || ''
     setDescription(prefilled)
+    const configs = matchLineItems(lineItems, householdItems, categories, memberNicknames)
+    const synced =
+      receiptGuests.length > 0
+        ? syncReceiptGuestsToConfigs(configs, receiptGuests, splitResolverCtx)
+        : configs
     setLineItemConfigs(
-      matchLineItems(lineItems, householdItems, categories, memberNicknames),
+      receiptGuests.length > 0
+        ? withConfiguredFlags(synced, memberCount, splitResolverCtx)
+        : synced,
     )
     setLastModalIndex(null)
     setStep(3)
@@ -423,6 +531,21 @@ export default function ScanReceiptWizard({
         c.active && hasValidSplitAssignment(c, memberCount, splitResolverCtx) ? { ...c, active: true } : c,
       ),
     )
+  }
+
+  function handleReceiptGuestsChange(nextGuests: HouseholdGuest[]) {
+    setLineItemConfigs((prev) =>
+      withConfiguredFlags(
+        applyReceiptGuestChange(prev, receiptGuestsRef.current, nextGuests, splitResolverCtx),
+        memberCount,
+        splitResolverCtx,
+      ),
+    )
+    setReceiptGuests(nextGuests)
+  }
+
+  function handleGuestCreated(guest: HouseholdGuest) {
+    setHouseholdGuests((prev) => [...prev, guest].sort((a, b) => a.name.localeCompare(b.name)))
   }
 
   function handleModalSave(updatedConfigs: LineItemConfig[], lastIndex: number) {
@@ -467,7 +590,7 @@ export default function ScanReceiptWizard({
         Object.entries(catCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
 
       const newHouseholdItems = configsToSave
-        .filter((c) => c.saveAsHouseholdItem && !c.householdItemId)
+        .filter(shouldCreateHouseholdItemOnSave)
         .map((c) => ({
           name: c.resolvedItemName ?? c.description,
           default_category_id: c.categoryId,
@@ -484,7 +607,7 @@ export default function ScanReceiptWizard({
         }))
 
       const aliasInserts = configsToSave
-        .filter((c) => c.householdItemId !== null)
+        .filter(shouldUpsertAliasesOnSave)
         .flatMap((c) => {
           const allAliases = [c.description, ...(c.aiCandidates ?? [])]
           const deduplicated = Array.from(new Set(allAliases.map((n) => n.trim()).filter(Boolean)))
@@ -493,6 +616,12 @@ export default function ScanReceiptWizard({
             display_text: alias,
           }))
         })
+
+      const payer = parsePayerKey(paidByKey)
+      if (!payer) {
+        setSaveError(RECEIPTS.ERRORS.PAYER_REQUIRED)
+        return
+      }
 
       const payload: SaveReceiptPayload = {
         household_id: householdId,
@@ -516,7 +645,10 @@ export default function ScanReceiptWizard({
         })),
         category_id: primaryCategoryId,
         description: description || merchantName || 'Receipt',
-        paid_by_member_id: paidByMemberId,
+        uploaded_by_member_id: memberId,
+        ...(payer.type === 'member'
+          ? { paid_by_member_id: payer.id }
+          : { paid_by_guest_id: payer.id }),
         splits: aggregateSplits,
         new_household_items: newHouseholdItems.length > 0 ? newHouseholdItems : undefined,
         alias_inserts: aliasInserts.length > 0 ? aliasInserts : undefined,
@@ -714,12 +846,13 @@ export default function ScanReceiptWizard({
                 </button>
                 <button
                   type="button"
-                  onClick={enterStep3}
+                  onClick={enterSplitsStep}
                   disabled={!total}
                   className="flex-1 py-2.5 rounded-lg bg-indigo-500 text-white font-semibold hover:bg-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
                 >
                   Next →
                 </button>
+
               </div>
             </>
           )}
@@ -742,17 +875,36 @@ export default function ScanReceiptWizard({
           <div>
             <label className="block text-xs text-white/50 mb-1">{RECEIPTS.LABELS.PAID_BY}</label>
             <select
-              value={paidByMemberId}
-              onChange={(e) => setPaidByMemberId(e.target.value)}
+              value={paidByKey}
+              onChange={(e) => setPaidByKey(e.target.value)}
               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
             >
               {members.map((m) => (
-                <option key={m.id} value={m.id}>
+                <option key={m.id} value={payerKey('member', m.id)}>
                   {m.name}
+                </option>
+              ))}
+              {householdGuests.map((g) => (
+                <option key={g.id} value={payerKey('guest', g.id)}>
+                  {g.name}{RECEIPTS.LABELS.PAID_BY_GUEST_SUFFIX}
                 </option>
               ))}
             </select>
           </div>
+
+          {lineItemConfigs.length > 0 && (
+            <div>
+              <label className="block text-xs text-white/50 mb-1">{RECEIPTS.SPLITS.GUESTS_ON_RECEIPT}</label>
+              <p className="text-xs text-white/35 mb-2">{RECEIPTS.SPLITS.GUESTS_ON_RECEIPT_HINT}</p>
+              <AddParticipantsControl
+                householdId={householdId}
+                availableGuests={householdGuests}
+                selectedGuests={receiptGuests}
+                onChange={handleReceiptGuestsChange}
+                onGuestCreated={handleGuestCreated}
+              />
+            </div>
+          )}
 
           {lineItemConfigs.length > 0 && (
             <div>
@@ -773,8 +925,8 @@ export default function ScanReceiptWizard({
                   const catName = config.categoryId
                     ? categories.find((c) => c.id === config.categoryId)?.name
                     : null
-                  const lineSplits = getSplitsForLineItem(config, splitResolverCtx)
-                  const splitLines = getLineItemSplitLines(lineSplits, config.amount)
+                  const displayRows = getDisplaySplitsForLineItem(config, splitResolverCtx)
+                  const splitLines = getDisplaySplitLines(displayRows, config.amount)
                   const isDefaultSplit = usesDefaultEqualSplit(config, memberCount)
 
                   return (
@@ -804,7 +956,7 @@ export default function ScanReceiptWizard({
                       )}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-white/75 truncate">{config.description}</p>
-                        {config.resolvedItemName && (
+                        {config.setupMode === 'item' && config.resolvedItemName && (
                           <p className="text-xs text-indigo-300/70 mt-0.5 truncate">{config.resolvedItemName}</p>
                         )}
                         {catName && (
@@ -894,6 +1046,8 @@ export default function ScanReceiptWizard({
           householdItems={householdItems}
           splitResolverCtx={splitResolverCtx}
           householdId={householdId}
+          availableGuests={householdGuests}
+          onGuestCreated={handleGuestCreated}
           initialIndex={modalInitialIndex}
           onSave={handleModalSave}
           onCategoryCreated={handleCategoryCreated}

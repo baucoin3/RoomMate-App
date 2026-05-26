@@ -13,10 +13,6 @@ interface RecurringBillsSectionProps {
   onChanged: () => void
 }
 
-function formatCycleDueDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
 function memberRowLabel(
   bill: RecurringBillOverview,
   member: RecurringBillMemberStatus,
@@ -51,7 +47,7 @@ export default function RecurringBillsSection({
 
   if (bills.length === 0) {
     return (
-      <div className="rounded-2xl bg-[#1c1c24] px-5 py-8 text-center">
+      <div className="rounded-2xl bg-[#1c1c24] ring-1 ring-indigo-500/10 px-5 py-8 text-center">
         <p className="text-sm text-white/40">{FINANCES.OVERVIEW.NO_RECURRING_BILLS}</p>
         <Link
           href={ROUTES.HOUSEHOLD_SETTINGS(householdId)}
@@ -108,42 +104,39 @@ export default function RecurringBillsSection({
         const isLogged = bill.cycle_status === 'logged'
 
         return (
-          <div key={bill.recurring_expense_id} className="rounded-2xl bg-[#1c1c24] overflow-hidden">
+          <div
+            key={bill.recurring_expense_id}
+            className="rounded-2xl bg-[#1c1c24] ring-1 ring-indigo-500/10 overflow-hidden"
+          >
             {/* Header */}
-            <div className="px-5 py-4 border-b border-white/5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-white truncate">{bill.description}</div>
-                  <div className="mt-1 text-xs text-white/40">
-                    {FINANCES.SETTINGS.DUE_ON(bill.due_day_of_month)}
-                    {' · '}
-                    {FINANCES.OVERVIEW.DUE(formatCycleDueDate(bill.cycle_due_date))}
-                  </div>
-                  <div className="mt-0.5 text-xs text-white/40">
-                    {FINANCES.OVERVIEW.PAYER_PAYS(bill.payer.nickname)}
-                  </div>
+            <div className="flex items-center gap-3 px-5 py-3.5 border-b border-white/5">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold shrink-0 bg-indigo-500/20 text-indigo-300">
+                {bill.description.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-white truncate">{bill.description}</div>
+                <div className="text-xs text-white/40">
+                  {FINANCES.SETTINGS.DUE_ON(bill.due_day_of_month)}
                 </div>
-                <div className="flex flex-col items-end gap-1.5 shrink-0">
-                  <span className="text-sm font-semibold text-white">
-                    ${bill.total_amount.toFixed(2)}
-                  </span>
-                  {bill.category_name && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-white/60">
-                      {bill.category_name}
-                    </span>
-                  )}
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full ${
-                      isLogged
-                        ? 'bg-green-500/20 text-green-400'
-                        : 'bg-amber-500/20 text-amber-400'
-                    }`}
-                  >
-                    {isLogged
-                      ? FINANCES.OVERVIEW.LOGGED_THIS_CYCLE
-                      : FINANCES.OVERVIEW.NOT_LOGGED_THIS_CYCLE}
-                  </span>
+                <div className="text-xs text-indigo-300/80">
+                  {FINANCES.OVERVIEW.PAYER_PAYS(bill.payer.nickname)}
                 </div>
+              </div>
+              <div className="flex flex-col items-end gap-1.5 shrink-0">
+                <span className="text-sm font-semibold text-indigo-300">
+                  ${bill.total_amount.toFixed(2)}
+                </span>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                    isLogged
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                      : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                  }`}
+                >
+                  {isLogged
+                    ? FINANCES.OVERVIEW.LOGGED_THIS_CYCLE
+                    : FINANCES.OVERVIEW.NOT_LOGGED_THIS_CYCLE}
+                </span>
               </div>
             </div>
 
@@ -151,6 +144,8 @@ export default function RecurringBillsSection({
             {bill.members.map((member) => {
               const isSettled = member.is_settled === true
               const isOpen = isLogged && member.is_settled === false
+              const isViewerOwes = member.is_viewer && !member.is_payer
+              const highlightViewerOwes = isViewerOwes && (!isLogged || !isSettled)
               const canMarkPaid =
                 isLogged &&
                 bill.viewer_is_payer &&
@@ -162,14 +157,30 @@ export default function RecurringBillsSection({
               return (
                 <div
                   key={member.member_id}
-                  className="flex items-center gap-3 px-5 py-3 border-b border-white/5 last:border-0"
+                  className={`flex items-center gap-3 px-5 py-3 border-b border-white/5 last:border-0 ${
+                    highlightViewerOwes
+                      ? 'bg-red-500/10 border-l-2 border-l-red-400 pl-[18px]'
+                      : ''
+                  }`}
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm text-white truncate">
+                    <div
+                      className={`truncate ${
+                        highlightViewerOwes
+                          ? 'text-sm font-bold text-red-300'
+                          : 'text-sm text-white'
+                      }`}
+                    >
                       {memberRowLabel(bill, member)}
                     </div>
                     {!member.is_payer && (
-                      <div className="text-xs text-white/40">
+                      <div
+                        className={
+                          highlightViewerOwes
+                            ? 'text-sm font-bold text-red-400'
+                            : 'text-xs text-white/40'
+                        }
+                      >
                         ${member.share_amount.toFixed(2)}
                       </div>
                     )}

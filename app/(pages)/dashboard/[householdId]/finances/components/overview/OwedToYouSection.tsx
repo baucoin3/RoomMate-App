@@ -19,6 +19,12 @@ function displayDescription(item: OweItem): string {
   return item.receipt?.merchant_name ?? item.description
 }
 
+function participantLabel(p: OweItem['debtor']): string {
+  if (!p) return 'Someone'
+  if (p.type === 'guest') return FINANCES.OVERVIEW.GUEST_OWES_YOU(p.nickname)
+  return p.nickname
+}
+
 export default function OwedToYouSection({ items, householdId, onSettled }: OwedToYouSectionProps) {
   const [settling, setSettling] = useState<Set<string>>(new Set())
   const [groupErrors, setGroupErrors] = useState<Record<string, string>>({})
@@ -33,7 +39,7 @@ export default function OwedToYouSection({ items, householdId, onSettled }: Owed
 
   const groups = items.reduce<Record<string, { debtor: OweItem['debtor']; items: OweItem[] }>>(
     (acc, item) => {
-      const key = item.debtor?.id ?? 'unknown'
+      const key = `${item.debtor?.type ?? 'unknown'}:${item.debtor?.id ?? 'unknown'}`
       if (!acc[key]) acc[key] = { debtor: item.debtor, items: [] }
       acc[key].items.push(item)
       return acc
@@ -64,7 +70,9 @@ export default function OwedToYouSection({ items, householdId, onSettled }: Owed
   return (
     <div className="flex flex-col gap-3">
       {Object.entries(groups).map(([groupKey, group]) => {
-        const name = group.debtor?.nickname ?? 'Someone'
+        const name = participantLabel(group.debtor)
+        const displayName = group.debtor?.nickname ?? 'Someone'
+        const isGuest = group.debtor?.type === 'guest'
         const total = group.items.reduce((sum, i) => sum + i.amount, 0)
         const groupErr = groupErrors[groupKey]
         const allIds = group.items.map((i) => i.split_id)
@@ -74,10 +82,19 @@ export default function OwedToYouSection({ items, householdId, onSettled }: Owed
           <div key={groupKey} className="rounded-2xl bg-[#1c1c24] overflow-hidden">
             {/* Group header */}
             <div className="flex items-center gap-3 px-5 py-3.5 border-b border-white/5">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-500/20 text-green-400 text-sm font-semibold shrink-0">
-                {name.charAt(0).toUpperCase()}
+              <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold shrink-0 ${
+                isGuest ? 'bg-violet-500/20 text-violet-300' : 'bg-green-500/20 text-green-400'
+              }`}>
+                {displayName.charAt(0).toUpperCase()}
               </div>
-              <span className="flex-1 text-sm font-semibold text-white">{name}</span>
+              <span className="flex-1 text-sm font-semibold text-white flex items-center gap-1.5">
+                {name}
+                {isGuest && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">
+                    {FINANCES.OVERVIEW.GUEST_BADGE}
+                  </span>
+                )}
+              </span>
               <span className="text-sm font-semibold text-green-400">
                 +${total.toFixed(2)}
               </span>

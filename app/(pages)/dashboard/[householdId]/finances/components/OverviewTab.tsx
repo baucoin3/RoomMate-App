@@ -13,7 +13,30 @@ interface OverviewTabProps {
   householdId: string
 }
 
-function SectionHeader({ title }: { title: string }) {
+type SectionHeaderVariant = 'default' | 'owed' | 'owe' | 'recurring'
+
+function SectionHeader({
+  title,
+  variant = 'default',
+}: {
+  title: string
+  variant?: SectionHeaderVariant
+}) {
+  if (variant === 'owed') {
+    return (
+      <h3 className="text-base font-bold text-green-400 tracking-tight">{title}</h3>
+    )
+  }
+  if (variant === 'owe') {
+    return (
+      <h3 className="text-base font-bold text-red-400 tracking-tight">{title}</h3>
+    )
+  }
+  if (variant === 'recurring') {
+    return (
+      <h3 className="text-base font-bold text-indigo-400 tracking-tight">{title}</h3>
+    )
+  }
   return (
     <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wide">{title}</h3>
   )
@@ -76,7 +99,7 @@ export default function OverviewTab({ householdId }: OverviewTabProps) {
     <div className="flex flex-col gap-6">
       {/* Owed to You */}
       <div className="flex flex-col gap-3">
-        <SectionHeader title={FINANCES.OVERVIEW.OWED_TO_YOU_TITLE} />
+        <SectionHeader title={FINANCES.OVERVIEW.OWED_TO_YOU_TITLE} variant="owed" />
         <OwedToYouSection
           items={oweSummary?.owed_to_you ?? []}
           householdId={householdId}
@@ -86,13 +109,13 @@ export default function OverviewTab({ householdId }: OverviewTabProps) {
 
       {/* You Owe */}
       <div className="flex flex-col gap-3">
-        <SectionHeader title={FINANCES.OVERVIEW.YOU_OWE_TITLE} />
+        <SectionHeader title={FINANCES.OVERVIEW.YOU_OWE_TITLE} variant="owe" />
         <YouOweSection items={oweSummary?.you_owe ?? []} />
       </div>
 
       {/* Recurring Bills */}
       <div className="flex flex-col gap-3">
-        <SectionHeader title={FINANCES.OVERVIEW.RECURRING_BILLS_TITLE} />
+        <SectionHeader title={FINANCES.OVERVIEW.RECURRING_BILLS_TITLE} variant="recurring" />
         <RecurringBillsSection
           bills={recurringBills}
           householdId={householdId}

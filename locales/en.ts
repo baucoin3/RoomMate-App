@@ -224,8 +224,13 @@ export const FINANCES = {
     MARKING_PAID: 'Marking…',
     TOTAL_TO_COLLECT: 'Total to collect',
     SETTLED_BADGE: 'Settled',
+    GUEST_BADGE: 'Guest',
+    GUEST_OWES_YOU: (name: string) => `${name} (Guest) owes you`,
+    YOU_OWE_GUEST: (name: string) => `You owe ${name} (Guest)`,
+    PAID_BY_GUEST: (name: string) => `Paid by ${name} (Guest)`,
     OPEN_BADGE: 'Open',
     YOUR_SHARE_LABEL: 'Your share',
+    SPLITS_LABEL: 'Split breakdown',
     TOTAL_LABEL: 'Total',
     EXPAND_SPLITS: 'Show splits',
     COLLAPSE_SPLITS: 'Hide splits',
@@ -429,6 +434,7 @@ export const RECEIPTS = {
   STEPS: {
     UPLOAD: 'Upload',
     REVIEW: 'Review',
+    GUESTS: 'Guests',
     SPLITS: 'Splits',
   },
   LABELS: {
@@ -439,6 +445,7 @@ export const RECEIPTS = {
     SUBTOTAL: 'Subtotal',
     CATEGORY: 'Category',
     PAID_BY: 'Paid by',
+    PAID_BY_GUEST_SUFFIX: ' (Guest)',
     LINE_ITEMS: 'Line items',
     SHOW_LINE_ITEMS: 'Show line items',
     HIDE_LINE_ITEMS: 'Hide line items',
@@ -447,6 +454,7 @@ export const RECEIPTS = {
     THIS_MONTH: 'This month',
     TOTAL_RECEIPTS: 'Total receipts',
     LINE_ITEM_SPLIT_MEMBER: (name: string, amount: string, percentage: number) => `${name} ${percentage}% · $${amount}`,
+    LINE_ITEM_SPLIT_GUEST: (name: string, amount: string, percentage: number) => `${name} (Guest) ${percentage}% · $${amount}`,
     LINE_ITEM_SPLIT_MORE: (n: number) => `+${n} more`,
     LINE_ITEM_SPLIT_SEPARATOR: ' · ',
     DEFAULT_SPLIT_PREFIX: 'Equal split · ',
@@ -469,6 +477,10 @@ export const RECEIPTS = {
     CONFIGURE_ITEMS_COUNT: (n: number) => `${n} item${n === 1 ? '' : 's'}`,
     ADD_ALL_TO_EXPENSE: 'Add all to expense list',
   },
+  SPLITS: {
+    GUESTS_ON_RECEIPT: 'Guests on this receipt',
+    GUESTS_ON_RECEIPT_HINT: 'Guests added here are included on every line item.',
+  },
   EMPTY: 'No receipts scanned yet.',
   ERRORS: {
     LOAD: 'Failed to load receipts.',
@@ -477,6 +489,7 @@ export const RECEIPTS = {
     NOT_A_RECEIPT: 'This doesn\'t look like a receipt. Please upload a photo of a purchase receipt.',
     SAVE_FAILED: 'Failed to save receipt.',
     REQUIRED_FIELDS: 'Total amount and paid-by member are required.',
+    PAYER_REQUIRED: 'Select who paid — a household member or a guest.',
     SPLITS_REQUIRED: 'All items need a valid split before saving.',
     NO_MEMBERS_FOR_SPLITS: 'Add household members before saving receipts.',
     HOUSEHOLD_REQUIRED: 'Household ID is required.',
@@ -543,6 +556,10 @@ export const RECEIPTS = {
     BY_CATEGORY_TAB: 'By Category',
     ADD_AS_NEW_ITEM: (name: string) => `+ Add "${name}" as new item`,
     GROUP_PLACEHOLDER: 'Group (e.g. veggies)',
+    GUESTS_ON_ITEM: 'Guests on this item',
+    ADD_GUEST_TO_ITEM: 'Add guest',
+    ADD_GROUP_TO_ITEM: 'Add group',
+    NO_GUESTS_ON_ITEM: 'No guests on this item',
   },
 } as const
 
@@ -558,6 +575,96 @@ function ordinal(n: number): string {
 export const SETTINGS = {
   TITLE: 'Catalog & Bills',
   SUBTITLE: 'Household item catalog, categories, and recurring bills',
+} as const
+
+export const GUESTS = {
+  NAV_LABEL: 'Guests',
+  PAGE_TITLE: 'Guests',
+  PAGE_SUBTITLE: "Manage people who split with your household but don't use the app.",
+  SECTION_TITLE: 'Guests',
+
+  INDIVIDUAL: 'Individual Guest',
+  GROUP: 'Guest Group',
+
+  ACTIONS: {
+    ADD_GUEST: 'Add Guest',
+    ADD_GROUP: 'Add Group',
+    EDIT: 'Edit',
+    DELETE: 'Delete',
+    SAVE: 'Save',
+    SAVING: 'Saving…',
+    CANCEL: 'Cancel',
+  },
+
+  LABELS: {
+    NAME: 'Name',
+    NAME_PLACEHOLDER: 'e.g. Alex Smith',
+    EMAIL: 'Email',
+    EMAIL_OPTIONAL: 'Email (optional — used to notify them of splits)',
+    EMAIL_PLACEHOLDER: 'alex@example.com',
+    EXPIRY: 'Auto-expire after',
+    EXPIRY_NONE: 'Never',
+    EXPIRY_CUSTOM: 'Choose a date',
+    GROUP_NAME: 'Group name',
+    GROUP_NAME_PLACEHOLDER: 'e.g. Cottage Weekend',
+    GROUP_MEMBERS: 'Members',
+    ADD_GROUP_MEMBER: 'Add guest to group',
+    ADD_GROUP_MEMBER_PLACEHOLDER: 'Select a guest…',
+    NO_GUESTS_FOR_GROUP: 'Add individual guests first, then add them to this group.',
+    REMOVE_GUEST: (name: string) => `Remove ${name}`,
+    PERMANENT: 'Permanent',
+    EXPIRES: 'Expires',
+  },
+
+  WIZARD_STEP: {
+    TITLE: 'Anyone splitting this with you?',
+    SUBTITLE: "Add guests to include them in the split. They'll receive an email breakdown.",
+    ADD_INDIVIDUAL: 'Add Individual',
+    ADD_GROUP: 'Add Group',
+    SKIP: 'Skip — household only',
+    SEARCH_PLACEHOLDER: 'Search guests…',
+    CREATE_NEW: 'Create new guest',
+    SELECTED: 'Added to split',
+    NO_GUESTS: 'No guests yet',
+    NO_GUESTS_HINT: 'Add guests here to include them in receipt splits.',
+    CONTINUE_WITH: (n: number) => `Continue with ${n} guest${n === 1 ? '' : 's'} →`,
+  },
+
+  LOADING: 'Loading…',
+  GROUP_PICKER_TITLE: 'Select a group',
+  GROUP_MEMBER_COUNT: (n: number) => `${n} member${n === 1 ? '' : 's'}`,
+  CLOSE: 'Close',
+
+  SPLIT_LABEL: {
+    GUEST_BADGE: 'Guest',
+  },
+
+  EMAIL: {
+    SUBJECT: (name: string) => `${name} shared a receipt with you`,
+    HEADING: "You've been included in a split",
+    BODY: (payer: string, merchant: string, date: string, amount: string) =>
+      `${payer} paid for ${merchant} on ${date}. Your share is ${amount}.`,
+    PAY_TO: (payer: string, email: string) => `Pay ${payer} at ${email}`,
+    FOOTER: (household: string) => `Sent on behalf of ${household}. You don't need an account.`,
+  },
+
+  ERRORS: {
+    NAME_REQUIRED: 'Guest name is required.',
+    GROUP_NAME_REQUIRED: 'Group name is required.',
+    DELETE_FAILED: 'Failed to delete guest.',
+    SAVE_FAILED: 'Failed to save guest.',
+    LOAD_FAILED: 'Failed to load guests.',
+    GROUP_DELETE_FAILED: 'Failed to delete group.',
+    GROUP_SAVE_FAILED: 'Failed to save group.',
+    HOUSEHOLD_REQUIRED: 'Household ID is required.',
+    NOT_FOUND: 'Guest not found.',
+    FORBIDDEN: 'You do not have access to this guest.',
+  },
+
+  EMPTY_GUESTS: 'No guests yet.',
+  EMPTY_GUESTS_CTA: 'Add your first guest to start including them in splits.',
+  EMPTY_GROUPS: 'No groups yet.',
+  EMPTY_GROUPS_CTA: 'Create a group to bundle recurring guests together.',
 } as const
 
 export const HOUSEHOLD_DASHBOARD = {
