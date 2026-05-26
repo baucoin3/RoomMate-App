@@ -6,7 +6,7 @@ import type { ExpenseCategory, HouseholdMemberSummary } from '@/lib/types/financ
 import type { HouseholdItem, HouseholdItemAlias } from '@/lib/types/householdItems'
 import { FINANCES } from '@/locales/en'
 import SplitEditor from '@/components/SplitEditor'
-import { buildDefaultSplits } from '@/lib/utils/splits'
+import { buildDefaultSplits, splitsSumTo100 } from '@/lib/utils/splits'
 
 interface ItemRulesSectionProps {
   householdId: string
@@ -40,7 +40,7 @@ function ItemForm({ householdId, categories, members, initialItem, onSaved, onCa
   const [showSuggestions, setShowSuggestions] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const splitsValid = !useCustomSplit || Math.abs(splits.reduce((s, x) => s + x.percentage, 0) - 100) <= 0.01
+  const splitsValid = !useCustomSplit || splitsSumTo100(splits)
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)

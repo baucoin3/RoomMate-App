@@ -24,6 +24,9 @@ export interface LineItemConfig {
   categoryId: string | null
   useCustomSplit: boolean
   customSplits: LineItemSplitRow[]
+  guestSplits: import('@/lib/types/guests').GuestSplitRow[]
+  /** When true, member + guest % on this item were manually edited. */
+  splitCustomized: boolean
   saveAsHouseholdItem: boolean
   householdItemId: string | null
   resolvedItemName: string | null
@@ -85,8 +88,15 @@ export interface SaveReceiptPayload {
   line_items: Array<{ description: string; amount: number; quantity: number }>
   category_id: string | null
   description: string
-  paid_by_member_id: string
-  splits: Array<{ household_member_id: string; percentage: number; calculated_amount: number }>
+  uploaded_by_member_id: string
+  paid_by_member_id?: string
+  paid_by_guest_id?: string
+  splits: Array<{
+    household_member_id?: string
+    guest_id?: string
+    percentage: number
+    calculated_amount: number
+  }>
   new_household_items?: Array<{
     name: string
     default_category_id: string | null
@@ -103,7 +113,8 @@ export interface ReceiptLedgerItem extends Receipt {
 }
 
 export interface ReceiptDetailSplit {
-  memberNickname: string
+  participantType: 'member' | 'guest'
+  displayName: string
   amount: number
 }
 

@@ -5,10 +5,11 @@ import { useParams } from 'next/navigation'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import type { ExpenseCategory, RecurringExpense, HouseholdMemberSummary } from '@/lib/types/finances'
 import type { HouseholdItem } from '@/lib/types/householdItems'
-import { FINANCES, SETTINGS } from '@/locales/en'
+import { FINANCES, SETTINGS, GUESTS } from '@/locales/en'
 import CategoriesSection from '../finances/components/settings/CategoriesSection'
 import ItemRulesSection from '../finances/components/settings/ItemRulesSection'
 import RecurringSection from '../finances/components/settings/RecurringSection'
+import GuestsSection from '@/components/guests/GuestsSection'
 
 function ChevronIcon({ open }: { open: boolean }) {
   return (
@@ -127,7 +128,6 @@ export default function SettingsPage() {
         <RecurringSection
           householdId={householdId}
           recurring={recurring}
-          categories={categories}
           members={members}
           onRecurringChanged={(updater) => setRecurring(updater)}
         />
@@ -150,6 +150,10 @@ export default function SettingsPage() {
           members={members}
           onItemsChanged={(updater) => setHouseholdItems(updater)}
         />
+      </AccordionSection>
+
+      <AccordionSection title={GUESTS.SECTION_TITLE}>
+        <GuestsSection householdId={householdId} />
       </AccordionSection>
     </div>
   )

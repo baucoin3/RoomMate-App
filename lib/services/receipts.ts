@@ -9,6 +9,7 @@ import {
   RECEIPT_CATEGORY_WITH_OPTIONS,
 } from '@/lib/config'
 import { upsertAliasesBatch } from '@/lib/services/householdItems'
+import { RECEIPTS } from '@/locales/en'
 import type { ReceiptAnalysis, ReceiptDetail, ReceiptLedgerItem, SaveReceiptPayload } from '@/lib/types/receipts'
 
 type ReceiptAnalysisRaw = Partial<ReceiptAnalysis> & { is_receipt?: boolean }
@@ -94,6 +95,12 @@ export async function saveReceipt(
   supabase: SupabaseClient,
   payload: SaveReceiptPayload,
 ): Promise<{ data: { receipt_id: string; expense_id: string } | null; error: string | null }> {
+  const hasMemberPayer = Boolean(payload.paid_by_member_id)
+  const hasGuestPayer = Boolean(payload.paid_by_guest_id)
+  if (hasMemberPayer === hasGuestPayer) {
+    return { data: null, error: RECEIPTS.ERRORS.PAYER_REQUIRED }
+  }
+
   if (payload.new_household_items && payload.new_household_items.length > 0) {
     const itemRows = payload.new_household_items.map((item) => ({
       household_id: payload.household_id,
@@ -126,7 +133,7 @@ export async function saveReceipt(
     .from('receipts')
     .insert({
       household_id: payload.household_id,
-      uploaded_by_member_id: payload.paid_by_member_id,
+      uploaded_by_member_id: payload.uploaded_by_member_id,
       image_url: payload.image_url,
       merchant_name: payload.merchant_name,
       receipt_date: payload.receipt_date,
@@ -160,7 +167,8 @@ export async function saveReceipt(
       category_id: payload.category_id,
       description: payload.description,
       total_amount: payload.raw_total,
-      paid_by_member_id: payload.paid_by_member_id,
+      paid_by_member_id: payload.paid_by_member_id ?? null,
+      paid_by_guest_id: payload.paid_by_guest_id ?? null,
       date: payload.receipt_date ?? new Date().toISOString().slice(0, 10),
       receipt_id: receiptRow.id,
     })
@@ -172,7 +180,8 @@ export async function saveReceipt(
   if (payload.splits.length > 0) {
     const splitRows = payload.splits.map((s) => ({
       expense_id: expenseRow.id,
-      household_member_id: s.household_member_id,
+      household_member_id: s.household_member_id ?? null,
+      guest_id: s.guest_id ?? null,
       percentage_override: s.percentage,
       calculated_amount: s.calculated_amount,
     }))
@@ -304,7 +313,10 @@ type ReceiptDetailRow = {
     expense_categories: { name: string } | null
     expense_splits: Array<{
       calculated_amount: number
+      household_member_id: string | null
+      guest_id: string | null
       household_members: { nickname: string } | null
+      household_guests: { name: string } | null
     }>
   }>
 }
@@ -319,7 +331,7 @@ export async function getReceiptDetail(
     .select(
       'id, image_url, merchant_name, receipt_date, raw_total, ' +
       'receipt_line_items(id, description, amount, quantity), ' +
-      'expenses(id, total_amount, expense_categories(name), expense_splits(calculated_amount, household_members(nickname)))',
+      'expenses(id, total_amount, expense_categories(name), expense_splits(calculated_amount, household_member_id, guest_id, household_members(nickname), household_guests(name)))',
     )
     .eq('id', receiptId)
     .eq('household_id', householdId)
@@ -343,15 +355,22 @@ export async function getReceiptDetail(
       amount: item.amount,
       quantity: item.quantity,
     })),
-    splits: (expense?.expense_splits ?? [])
-      .filter(
-        (s): s is { calculated_amount: number; household_members: { nickname: string } } =>
-          s.household_members !== null,
-      )
-      .map((s) => ({
-        memberNickname: s.household_members.nickname,
-        amount: s.calculated_amount,
-      })),
+    splits: (expense?.expense_splits ?? []).reduce<ReceiptDetail['splits']>((acc, s) => {
+      if (s.household_members) {
+        acc.push({
+          participantType: 'member',
+          displayName: s.household_members.nickname,
+          amount: s.calculated_amount,
+        })
+      } else if (s.household_guests) {
+        acc.push({
+          participantType: 'guest',
+          displayName: s.household_guests.name,
+          amount: s.calculated_amount,
+        })
+      }
+      return acc
+    }, []),
     expenseTotal: expense?.total_amount ?? 0,
   }
 }

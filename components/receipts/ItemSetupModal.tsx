@@ -4,19 +4,28 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { RECEIPTS } from '@/locales/en'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import SplitEditor from '@/components/SplitEditor'
+import LineItemParticipantEditor from '@/components/receipts/LineItemParticipantEditor'
+import GuestChip from '@/components/receipts/GuestChip'
+import AddGuestModal from '@/components/guests/AddGuestModal'
 import { buildDefaultSplits } from '@/lib/utils/splits'
 import {
+  applyGuestToLineItem,
   categoryHasValidSplits,
+  getDisplaySplitsForLineItem,
   getLineItemStatus,
   getSplitsForLineItem,
   hasValidSplitAssignment,
   isLineItemConfirmed,
   lineItemStatusLabel,
   lineItemStatusPillClass,
+  participantSplitsFromDisplay,
+  removeGuestFromLineItem,
   type SplitResolverContext,
 } from '@/lib/utils/receiptLineItems'
 import type { LineItemConfig, LineItemSplitRow, MatchSource } from '@/lib/types/receipts'
 import type { HouseholdItem } from '@/lib/types/householdItems'
+import type { HouseholdGuest, HouseholdGuestGroup } from '@/lib/types/guests'
+import { GUESTS } from '@/locales/en'
 
 interface Category {
   id: string
@@ -35,6 +44,8 @@ interface Props {
   householdItems: HouseholdItem[]
   splitResolverCtx: SplitResolverContext
   householdId: string
+  availableGuests: HouseholdGuest[]
+  onGuestCreated?: (guest: HouseholdGuest) => void
   initialIndex?: number
   onSave: (configs: LineItemConfig[], lastIndex: number) => void
   onCategoryCreated: (cat: Category) => void
@@ -116,6 +127,8 @@ function applyHouseholdItemToConfig(
     categoryId: item.default_category_id ?? null,
     useCustomSplit: hasOverrides,
     customSplits,
+    guestSplits: config.guestSplits ?? [],
+    splitCustomized: config.splitCustomized ?? false,
     configured: true,
   }
 }
@@ -146,6 +159,8 @@ export default function ItemSetupModal({
   householdItems,
   splitResolverCtx,
   householdId,
+  availableGuests,
+  onGuestCreated,
   initialIndex = 0,
   onSave,
   onCategoryCreated,
@@ -165,9 +180,17 @@ export default function ItemSetupModal({
   const [addingCat, setAddingCat] = useState(false)
   const [addCatError, setAddCatError] = useState('')
 
+  const [guestSearch, setGuestSearch] = useState('')
+  const [showGuestDropdown, setShowGuestDropdown] = useState(false)
+  const [showGuestCreateModal, setShowGuestCreateModal] = useState(false)
+  const [showGroupPicker, setShowGroupPicker] = useState(false)
+  const [guestGroups, setGuestGroups] = useState<HouseholdGuestGroup[]>([])
+  const guestSearchRef = useRef<HTMLDivElement>(null)
+
   const [itemSearch, setItemSearch] = useState('')
   const [showItemDropdown, setShowItemDropdown] = useState(false)
   const searchContainerRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const memberCount = allMembers.length
   const current = localConfigs[idx]
@@ -183,6 +206,12 @@ export default function ItemSetupModal({
     : hasValidSplitAssignment(current, memberCount, modalSplitCtx)
 
   const displaySplits: LineItemSplitRow[] = getSplitsForLineItem(current, modalSplitCtx)
+  const displayParticipantRows = getDisplaySplitsForLineItem(current, modalSplitCtx)
+  const itemGuestIds = new Set((current.guestSplits ?? []).map((g) => g.guest_id))
+  const filteredAvailableGuests = availableGuests.filter(
+    (g) => !itemGuestIds.has(g.id) &&
+      (guestSearch === '' || g.name.toLowerCase().includes(guestSearch.toLowerCase())),
+  )
   const showNoSplitsWarning =
     current.categoryId !== null &&
     !current.useCustomSplit &&
@@ -241,6 +270,57 @@ export default function ItemSetupModal({
   useEffect(() => {
     setItemSearch(current.resolvedItemName ?? '')
   }, [idx, current.resolvedItemName])
+
+  useEffect(() => {
+    scrollContainerRef.current?.scrollTo({ top: 0 })
+  }, [idx])
+
+  useEffect(() => {
+    function handleGuestOutside(e: MouseEvent) {
+      if (guestSearchRef.current && !guestSearchRef.current.contains(e.target as Node)) {
+        setShowGuestDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleGuestOutside)
+    return () => document.removeEventListener('mousedown', handleGuestOutside)
+  }, [])
+
+  useEffect(() => {
+    apiClient
+      .get<{ data: HouseholdGuestGroup[] }>(`/api/guests/groups?householdId=${householdId}`)
+      .then((res) => setGuestGroups(res.data.data ?? []))
+      .catch((err) => console.error('[ItemSetupModal] load guest groups', err))
+  }, [householdId])
+
+  function handleAddGuestToItem(guest: HouseholdGuest) {
+    updateCurrent(applyGuestToLineItem(current, guest, modalSplitCtx))
+    setGuestSearch('')
+    setShowGuestDropdown(false)
+  }
+
+  function handleRemoveGuestFromItem(guestId: string) {
+    updateCurrent(removeGuestFromLineItem(current, guestId, modalSplitCtx))
+  }
+
+  function handleAddGroupToItem(group: HouseholdGuestGroup) {
+    const membersToAdd = (group.members ?? []).filter((g) => !itemGuestIds.has(g.id))
+    let next = current
+    membersToAdd.forEach((guest) => {
+      next = applyGuestToLineItem(next, guest, modalSplitCtx)
+    })
+    updateCurrent(next)
+    setShowGroupPicker(false)
+  }
+
+  function handleParticipantSplitChange(rows: ReturnType<typeof getDisplaySplitsForLineItem>) {
+    const { customSplits, guestSplits } = participantSplitsFromDisplay(rows, modalSplitCtx)
+    updateCurrent({
+      customSplits,
+      guestSplits,
+      useCustomSplit: true,
+      splitCustomized: true,
+    })
+  }
 
   function commitCurrentAndAdvance(action: 'next' | 'done' | 'close') {
     const currentIdx = idx
@@ -368,6 +448,180 @@ export default function ItemSetupModal({
 
   const progressPct = Math.round(((idx + 1) / total) * 100)
 
+  async function handleCreateGuest(data: { name: string; email: string | null; expires_at: string | null }) {
+    const res = await apiClient.post<{ data: HouseholdGuest }>('/api/guests', {
+      household_id: householdId,
+      ...data,
+    })
+    const newGuest = res.data.data
+    onGuestCreated?.(newGuest)
+    handleAddGuestToItem(newGuest)
+  }
+
+  function renderGuestOnItemSection() {
+    return (
+      <div className="flex flex-col gap-2">
+        <span className="text-xs text-white/50">{RECEIPTS.ITEM_SETUP.GUESTS_ON_ITEM}</span>
+        {(current.guestSplits ?? []).length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {(current.guestSplits ?? []).map((g) => (
+              <GuestChip
+                key={g.guest_id}
+                guest={{ id: g.guest_id, name: g.name, household_id: householdId, email: null, expires_at: null, created_by: null, created_at: '' }}
+                onRemove={handleRemoveGuestFromItem}
+              />
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <div ref={guestSearchRef} className="relative flex-1">
+            <input
+              type="text"
+              value={guestSearch}
+              onChange={(e) => { setGuestSearch(e.target.value); setShowGuestDropdown(true) }}
+              onFocus={() => setShowGuestDropdown(true)}
+              placeholder={GUESTS.WIZARD_STEP.SEARCH_PLACEHOLDER}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 transition-colors"
+            />
+            {showGuestDropdown && (filteredAvailableGuests.length > 0 || guestSearch.trim()) && (
+              <ul className="absolute left-0 right-0 top-full mt-1 z-20 max-h-36 overflow-y-auto rounded-xl border border-white/10 bg-[#2a2a32] shadow-xl">
+                {filteredAvailableGuests.map((g) => (
+                  <li key={g.id}>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => handleAddGuestToItem(g)}
+                      className="w-full text-left px-4 py-2 text-sm text-white/80 hover:bg-white/5"
+                    >
+                      {g.name}
+                    </button>
+                  </li>
+                ))}
+                {guestSearch.trim() && (
+                  <li>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => setShowGuestCreateModal(true)}
+                      className="w-full text-left px-4 py-2 text-sm text-indigo-300 hover:bg-white/5"
+                    >
+                      {GUESTS.WIZARD_STEP.CREATE_NEW}
+                    </button>
+                  </li>
+                )}
+              </ul>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowGroupPicker((v) => !v)}
+            className="px-3 py-2 rounded-lg border border-white/10 text-xs text-white/60 hover:text-white hover:border-white/20 transition-colors shrink-0"
+          >
+            {RECEIPTS.ITEM_SETUP.ADD_GROUP_TO_ITEM}
+          </button>
+        </div>
+        {showGroupPicker && guestGroups.length > 0 && (
+          <ul className="rounded-xl border border-white/10 bg-white/3 overflow-hidden">
+            {guestGroups.map((group) => (
+              <li key={group.id}>
+                <button
+                  type="button"
+                  onClick={() => handleAddGroupToItem(group)}
+                  className="w-full text-left px-4 py-2.5 text-sm text-white/80 hover:bg-white/5"
+                >
+                  {group.name}
+                  <span className="ml-2 text-xs text-white/35">
+                    ({group.members?.length ?? 0})
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {(current.guestSplits ?? []).length === 0 && (
+          <p className="text-xs text-white/35">{RECEIPTS.ITEM_SETUP.NO_GUESTS_ON_ITEM}</p>
+        )}
+      </div>
+    )
+  }
+
+  function renderSplitPreview(showCustomToggle: boolean) {
+    const hasGuests = (current.guestSplits ?? []).length > 0
+    return (
+      <div>
+        {renderGuestOnItemSection()}
+        <div className="flex items-center justify-between mb-2 mt-4">
+          <span className="text-xs text-white/50">
+            {RECEIPTS.ITEM_SETUP.SPLIT_PREVIEW}
+            {!current.categoryId && !current.useCustomSplit && !hasGuests && (
+              <span className="ml-1.5 text-white/30">({RECEIPTS.ITEM_SETUP.EQUAL_SPLIT_DEFAULT})</span>
+            )}
+          </span>
+          {showCustomToggle && !hasGuests && (
+            <button
+              type="button"
+              onClick={() =>
+                updateCurrent({
+                  useCustomSplit: !current.useCustomSplit,
+                  customSplits: current.customSplits.length > 0
+                    ? current.customSplits
+                    : getSplitsForLineItem(current, modalSplitCtx),
+                })
+              }
+              className={`text-xs px-2.5 py-1 rounded-full border transition-all ${
+                current.useCustomSplit
+                  ? 'border-violet-500 text-violet-300 bg-violet-500/10'
+                  : 'border-white/10 text-white/40 hover:text-white/70 hover:border-white/20'
+              }`}
+            >
+              {RECEIPTS.ITEM_SETUP.CUSTOM_SPLIT_LABEL}
+            </button>
+          )}
+        </div>
+        <div className="flex flex-col gap-2 bg-white/3 rounded-xl p-3 border border-white/8">
+          {hasGuests ? (
+            <LineItemParticipantEditor
+              rows={displayParticipantRows}
+              onChange={handleParticipantSplitChange}
+              totalAmount={current.amount}
+            />
+          ) : current.useCustomSplit ? (
+            <SplitEditor
+              members={allMembers.map((m) => ({ id: m.id, nickname: m.name }))}
+              value={current.customSplits.map((s) => ({
+                household_member_id: s.household_member_id,
+                percentage: s.percentage,
+                amount: (s.percentage / 100) * current.amount,
+              }))}
+              onChange={(splits) =>
+                updateCurrent({
+                  customSplits: splits.map((s) => ({
+                    household_member_id: s.household_member_id,
+                    nickname: allMembers.find((m) => m.id === s.household_member_id)?.name ?? '',
+                    percentage: s.percentage,
+                  })),
+                })
+              }
+              totalAmount={current.amount}
+              showAmountInputs
+            />
+          ) : (
+            displaySplits.map((s) => {
+              const dollar = ((s.percentage / 100) * current.amount).toFixed(2)
+              return (
+                <div key={s.household_member_id} className="flex items-center gap-3">
+                  <span className="flex-1 text-sm text-white/80">{s.nickname}</span>
+                  <span className="text-sm text-white/50 font-mono">{s.percentage}%</span>
+                  <span className="text-sm font-mono text-emerald-400/80 w-14 text-right">${dollar}</span>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+    )
+  }
+
   function handleFooterButton() {
     const isLast = idx === total - 1
     commitCurrentAndAdvance(isLast ? 'done' : 'next')
@@ -426,7 +680,7 @@ export default function ItemSetupModal({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5 overflow-x-hidden">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5 overflow-x-hidden">
           <div className={`flex flex-col gap-5 transition-all duration-[200ms] ease-out ${slideClass}`}>
 
             {!current.active ? (
@@ -582,126 +836,60 @@ export default function ItemSetupModal({
                       )}
                     </div>
 
-                    {/* No match: save as household item toggle */}
-                    {current.householdItemId === null && (
+                    {/* Group input and split preview when creating new item */}
+                    {current.householdItemId === null && current.saveAsHouseholdItem && (
                       <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const enabling = !current.saveAsHouseholdItem
-                            updateCurrent({
-                              saveAsHouseholdItem: enabling,
-                              itemGroup: enabling && !current.itemGroup
-                                ? (current.resolvedItemName ?? current.description)
-                                : current.itemGroup,
-                            })
-                          }}
-                          className={`flex items-start gap-3 w-full p-3.5 rounded-xl border transition-all text-left ${
+                        <input
+                          type="text"
+                          value={current.itemGroup}
+                          onChange={(e) => updateCurrent({ itemGroup: e.target.value })}
+                          placeholder={RECEIPTS.ITEM_SETUP.GROUP_PLACEHOLDER}
+                          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 transition-colors"
+                        />
+                        {renderSplitPreview(true)}
+                      </>
+                    )}
+
+                    {current.householdItemId === null && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const enabling = !current.saveAsHouseholdItem
+                          updateCurrent({
+                            saveAsHouseholdItem: enabling,
+                            itemGroup: enabling && !current.itemGroup
+                              ? (current.resolvedItemName ?? current.description)
+                              : current.itemGroup,
+                          })
+                        }}
+                        className={`flex items-start gap-3 w-full p-3.5 rounded-xl border transition-all text-left ${
+                          current.saveAsHouseholdItem
+                            ? 'border-indigo-500/50 bg-indigo-500/10'
+                            : 'border-white/10 bg-white/3 hover:border-white/20'
+                        }`}
+                      >
+                        <div
+                          className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${
                             current.saveAsHouseholdItem
-                              ? 'border-indigo-500/50 bg-indigo-500/10'
-                              : 'border-white/10 bg-white/3 hover:border-white/20'
+                              ? 'border-indigo-400 bg-indigo-500'
+                              : 'border-white/30'
                           }`}
                         >
-                          <div
-                            className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${
-                              current.saveAsHouseholdItem
-                                ? 'border-indigo-400 bg-indigo-500'
-                                : 'border-white/30'
-                            }`}
-                          >
-                            {current.saveAsHouseholdItem && (
-                              <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 text-white" fill="currentColor">
-                                <path d="M1 4l2.5 2.5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                              </svg>
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-white/90">
-                              {RECEIPTS.ITEM_SETUP.SAVE_AS_ITEM_LABEL}
-                            </p>
-                            <p className="text-xs text-white/40 mt-0.5">
-                              {RECEIPTS.ITEM_SETUP.SAVE_AS_ITEM_HINT}
-                            </p>
-                          </div>
-                        </button>
-
-                        {/* Group input and split preview when creating new item */}
-                        {current.saveAsHouseholdItem && (
-                          <>
-                          <input
-                            type="text"
-                            value={current.itemGroup}
-                            onChange={(e) => updateCurrent({ itemGroup: e.target.value })}
-                            placeholder={RECEIPTS.ITEM_SETUP.GROUP_PLACEHOLDER}
-                            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 transition-colors"
-                          />
-                          <div>
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs text-white/50">
-                                {RECEIPTS.ITEM_SETUP.SPLIT_PREVIEW}
-                                {!current.categoryId && !current.useCustomSplit && (
-                                  <span className="ml-1.5 text-white/30">({RECEIPTS.ITEM_SETUP.EQUAL_SPLIT_DEFAULT})</span>
-                                )}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  updateCurrent({
-                                    useCustomSplit: !current.useCustomSplit,
-                                    customSplits: current.customSplits.length > 0
-                                      ? current.customSplits
-                                      : getSplitsForLineItem(current, modalSplitCtx),
-                                  })
-                                }
-                                className={`text-xs px-2.5 py-1 rounded-full border transition-all ${
-                                  current.useCustomSplit
-                                    ? 'border-violet-500 text-violet-300 bg-violet-500/10'
-                                    : 'border-white/10 text-white/40 hover:text-white/70 hover:border-white/20'
-                                }`}
-                              >
-                                {RECEIPTS.ITEM_SETUP.CUSTOM_SPLIT_LABEL}
-                              </button>
-                            </div>
-                            <div className="flex flex-col gap-2 bg-white/3 rounded-xl p-3 border border-white/8">
-                              {current.useCustomSplit ? (
-                                <SplitEditor
-                                  members={allMembers.map((m) => ({ id: m.id, nickname: m.name }))}
-                                  value={current.customSplits.map((s) => ({
-                                    household_member_id: s.household_member_id,
-                                    percentage: s.percentage,
-                                    amount: (s.percentage / 100) * current.amount,
-                                  }))}
-                                  onChange={(splits) =>
-                                    updateCurrent({
-                                      customSplits: splits.map((s) => ({
-                                        household_member_id: s.household_member_id,
-                                        nickname: allMembers.find((m) => m.id === s.household_member_id)?.name ?? '',
-                                        percentage: s.percentage,
-                                      })),
-                                    })
-                                  }
-                                  totalAmount={current.amount}
-                                  showAmountInputs
-                                />
-                              ) : (
-                                displaySplits.map((s) => {
-                                  const dollar = ((s.percentage / 100) * current.amount).toFixed(2)
-                                  return (
-                                    <div key={s.household_member_id} className="flex items-center gap-3">
-                                      <span className="flex-1 text-sm text-white/80">{s.nickname}</span>
-                                      <span className="text-sm text-white/50 font-mono">{s.percentage}%</span>
-                                      <span className="text-sm font-mono text-emerald-400/80 w-14 text-right">
-                                        ${dollar}
-                                      </span>
-                                    </div>
-                                  )
-                                })
-                              )}
-                            </div>
-                          </div>
-                          </>
-                        )}
-                      </>
+                          {current.saveAsHouseholdItem && (
+                            <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 text-white" fill="currentColor">
+                              <path d="M1 4l2.5 2.5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                            </svg>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-white/90">
+                            {RECEIPTS.ITEM_SETUP.SAVE_AS_ITEM_LABEL}
+                          </p>
+                          <p className="text-xs text-white/40 mt-0.5">
+                            {RECEIPTS.ITEM_SETUP.SAVE_AS_ITEM_HINT}
+                          </p>
+                        </div>
+                      </button>
                     )}
 
                     {/* Matched to existing item */}
@@ -720,26 +908,7 @@ export default function ItemSetupModal({
                           </p>
                         </div>
 
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs text-white/50">{RECEIPTS.ITEM_SETUP.SPLIT_PREVIEW}</span>
-                          </div>
-                          <div className="flex flex-col gap-2 bg-white/3 rounded-xl p-3 border border-white/8">
-                            {displaySplits.map((s) => {
-                              const dollar = ((s.percentage / 100) * current.amount).toFixed(2)
-                              return (
-                                <div key={s.household_member_id} className="flex items-center gap-3">
-                                  <span className="flex-1 text-sm text-white/80">{s.nickname}</span>
-                                  <span className="text-sm text-white/50 font-mono">{s.percentage}%</span>
-                                  <span className="text-sm font-mono text-emerald-400/80 w-14 text-right">
-                                    ${dollar}
-                                  </span>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-
+                        {renderSplitPreview(false)}
                       </>
                     )}
                   </div>
@@ -813,74 +982,10 @@ export default function ItemSetupModal({
                       )}
                     </div>
 
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-white/50">
-                          {RECEIPTS.ITEM_SETUP.SPLIT_PREVIEW}
-                          {!current.categoryId && !current.useCustomSplit && (
-                            <span className="ml-1.5 text-white/30">({RECEIPTS.ITEM_SETUP.EQUAL_SPLIT_DEFAULT})</span>
-                          )}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateCurrent({
-                              useCustomSplit: !current.useCustomSplit,
-                              customSplits: current.customSplits.length > 0
-                                ? current.customSplits
-                                : getSplitsForLineItem(current, modalSplitCtx),
-                            })
-                          }
-                          className={`text-xs px-2.5 py-1 rounded-full border transition-all ${
-                            current.useCustomSplit
-                              ? 'border-violet-500 text-violet-300 bg-violet-500/10'
-                              : 'border-white/10 text-white/40 hover:text-white/70 hover:border-white/20'
-                          }`}
-                        >
-                          {RECEIPTS.ITEM_SETUP.CUSTOM_SPLIT_LABEL}
-                        </button>
-                      </div>
-
-                      <div className="flex flex-col gap-2 bg-white/3 rounded-xl p-3 border border-white/8">
-                        {current.useCustomSplit ? (
-                          <SplitEditor
-                            members={allMembers.map((m) => ({ id: m.id, nickname: m.name }))}
-                            value={current.customSplits.map((s) => ({
-                              household_member_id: s.household_member_id,
-                              percentage: s.percentage,
-                              amount: (s.percentage / 100) * current.amount,
-                            }))}
-                            onChange={(splits) =>
-                              updateCurrent({
-                                customSplits: splits.map((s) => ({
-                                  household_member_id: s.household_member_id,
-                                  nickname: allMembers.find((m) => m.id === s.household_member_id)?.name ?? '',
-                                  percentage: s.percentage,
-                                })),
-                              })
-                            }
-                            totalAmount={current.amount}
-                            showAmountInputs
-                          />
-                        ) : (
-                          displaySplits.map((s) => {
-                            const dollar = ((s.percentage / 100) * current.amount).toFixed(2)
-                            return (
-                              <div key={s.household_member_id} className="flex items-center gap-3">
-                                <span className="flex-1 text-sm text-white/80">{s.nickname}</span>
-                                <span className="text-sm text-white/50 font-mono">{s.percentage}%</span>
-                                <span className="text-sm font-mono text-emerald-400/80 w-14 text-right">
-                                  ${dollar}
-                                </span>
-                              </div>
-                            )
-                          })
-                        )}
-                        {showNoSplitsWarning && (
-                          <p className="text-xs text-amber-400">{RECEIPTS.ITEM_SETUP.NO_SPLITS}</p>
-                        )}
-                      </div>
-                    </div>
+                    {renderSplitPreview(true)}
+                    {showNoSplitsWarning && (
+                      <p className="text-xs text-amber-400">{RECEIPTS.ITEM_SETUP.NO_SPLITS}</p>
+                    )}
                   </div>
                 )}
               </>
@@ -936,6 +1041,13 @@ export default function ItemSetupModal({
           </button>
         </div>
       </div>
+
+      {showGuestCreateModal && (
+        <AddGuestModal
+          onSave={handleCreateGuest}
+          onClose={() => setShowGuestCreateModal(false)}
+        />
+      )}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getReceiptLedger, saveReceipt } from '@/lib/services/receipts'
+import { sendGuestSplitEmails } from '@/lib/services/guestEmails'
 import { RECEIPTS, ERRORS } from '@/locales/en'
 import type { SaveReceiptPayload } from '@/lib/types/receipts'
 
@@ -46,8 +47,14 @@ export async function POST(request: Request) {
     if (!body.household_id) {
       return NextResponse.json({ error: RECEIPTS.ERRORS.HOUSEHOLD_REQUIRED }, { status: 400 })
     }
-    if (!body.raw_total || !body.paid_by_member_id) {
+    if (!body.raw_total || !body.uploaded_by_member_id) {
       return NextResponse.json({ error: RECEIPTS.ERRORS.REQUIRED_FIELDS }, { status: 400 })
+    }
+
+    const hasMemberPayer = Boolean(body.paid_by_member_id)
+    const hasGuestPayer = Boolean(body.paid_by_guest_id)
+    if (hasMemberPayer === hasGuestPayer) {
+      return NextResponse.json({ error: RECEIPTS.ERRORS.PAYER_REQUIRED }, { status: 400 })
     }
 
     const supabase = createClient()
@@ -69,6 +76,11 @@ export async function POST(request: Request) {
 
     const { data, error } = await saveReceipt(supabase, body)
     if (error) return NextResponse.json({ error }, { status: 400 })
+
+    const hasGuestSplits = body.splits.some((s) => s.guest_id)
+    if (hasGuestSplits && data?.expense_id) {
+      void sendGuestSplitEmails(supabase, data.expense_id, body.household_id)
+    }
 
     return NextResponse.json({ data }, { status: 201 })
   } catch {

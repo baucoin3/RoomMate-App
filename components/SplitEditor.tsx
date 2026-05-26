@@ -1,7 +1,7 @@
 'use client'
 
 import { FINANCES } from '@/locales/en'
-import { SPLIT_TOTAL, roundPercentage } from '@/lib/utils/splits'
+import { SPLIT_TOTAL, buildEqualAmounts, buildEqualPercentages, roundPercentage, splitsSumTo100 } from '@/lib/utils/splits'
 import type { HouseholdMemberSummary } from '@/lib/types/finances'
 
 export interface SplitValue {
@@ -33,7 +33,7 @@ function formatEditableNumber(value: number) {
 
 export default function SplitEditor({ members, value, onChange, totalAmount, showAmountInputs = false }: SplitEditorProps) {
   const total = value.reduce((sum, s) => sum + (Number(s.percentage) || 0), 0)
-  const isValid = Math.abs(total - 100) <= 0.01
+  const isValid = splitsSumTo100(value)
   const amountInputTotal = totalAmount ?? 0
   const canEditAmounts = showAmountInputs && amountInputTotal > 0
 
@@ -104,21 +104,15 @@ export default function SplitEditor({ members, value, onChange, totalAmount, sho
 
   function handleEqualSplit() {
     if (members.length === 0) return
-    const base = Math.floor((100 / members.length) * 100) / 100
-    const remainder = Math.round((100 - base * members.length) * 100) / 100
-    const baseAmt = canEditAmounts && amountInputTotal > 0
-      ? Math.floor((amountInputTotal / members.length) * 100) / 100
-      : undefined
-    const remainderAmt = baseAmt !== undefined
-      ? Math.round((amountInputTotal - baseAmt * members.length) * 100) / 100
+    const percentages = buildEqualPercentages(members.length)
+    const amounts = canEditAmounts && amountInputTotal > 0
+      ? buildEqualAmounts(amountInputTotal, members.length)
       : undefined
     onChange(
       members.map((m, i) => ({
         household_member_id: m.id,
-        percentage: i === members.length - 1 ? base + remainder : base,
-        ...(baseAmt !== undefined
-          ? { amount: i === members.length - 1 ? baseAmt + (remainderAmt ?? 0) : baseAmt }
-          : {}),
+        percentage: percentages[i],
+        ...(amounts !== undefined ? { amount: amounts[i] } : {}),
       })),
     )
   }
