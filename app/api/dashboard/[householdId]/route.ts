@@ -32,7 +32,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: HOUSEHOLDS.ERRORS.FORBIDDEN }, { status: 403 })
     }
 
-    const { data, error } = await getDashboardData(supabase, params.householdId, membership.id)
+    const { data, error } = await getDashboardData(supabase, params.householdId)
 
     if (error || !data) {
       return NextResponse.json({ error: error ?? ERRORS.INTERNAL }, { status: 500 })

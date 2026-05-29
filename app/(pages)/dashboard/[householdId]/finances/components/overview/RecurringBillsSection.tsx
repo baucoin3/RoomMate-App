@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import type { RecurringBillOverview, RecurringBillMemberStatus } from '@/lib/types/finances'
-import { FINANCES, HOUSEHOLD_DASHBOARD } from '@/locales/en'
+import { FINANCES } from '@/locales/en'
 import { ROUTES } from '@/lib/constants/routes'
 
 interface RecurringBillsSectionProps {
@@ -33,7 +33,7 @@ function memberRowLabel(
     return FINANCES.OVERVIEW.YOU_OWE_PERSON(payerName)
   }
 
-  return HOUSEHOLD_DASHBOARD.RENT.THIRD_PARTY_OWES(member.member_name, payerName, amount)
+  return FINANCES.OVERVIEW.THIRD_PARTY_OWES(member.member_name, payerName, amount)
 }
 
 export default function RecurringBillsSection({

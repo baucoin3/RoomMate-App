@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { RESEND_API_KEY, EMAIL_FROM_ADDRESS, APP_NAME } from '@/lib/config'
 import { GUESTS } from '@/locales/en'
 
@@ -71,8 +72,9 @@ export async function sendGuestSplitEmails(
       .from('expenses')
       .select(
         'id, total_amount, date, description, paid_by_member_id, paid_by_guest_id, ' +
-        'household_members!paid_by_member_id(nickname, user_id), ' +
-        'household_guests!paid_by_guest_id(name, email), ' +
+        'payer_member:household_members!paid_by_member_id(nickname, user_id), ' +
+        'payer_guest:household_guests!paid_by_guest_id(name, email), ' +
+        'household:households!household_id(name), ' +
         'expense_splits(calculated_amount, guest_id, household_guests(name, email))',
       )
       .eq('id', expenseId)
@@ -84,34 +86,24 @@ export async function sendGuestSplitEmails(
     }
 
     const raw = expense as unknown as Record<string, unknown>
-    const payerMember = raw.household_members as { nickname: string; user_id: string } | null
-    const payerGuest = raw.household_guests as { name: string; email: string | null } | null
+    const payerMember = raw.payer_member as { nickname: string; user_id: string } | null
+    const payerGuest = raw.payer_guest as { name: string; email: string | null } | null
+    const householdName = (raw.household as { name: string } | null)?.name ?? APP_NAME
 
     let payerName: string
     let payerEmail: string
 
     if (payerMember) {
       payerName = payerMember.nickname
-      const { data: payerProfile } = await supabase
-        .from('profiles')
-        .select('email')
-        .eq('id', payerMember.user_id)
-        .maybeSingle()
-      payerEmail = (payerProfile as { email: string } | null)?.email ?? ''
+      const adminClient = createAdminClient()
+      const { data: { user: payerUser } } = await adminClient.auth.admin.getUserById(payerMember.user_id)
+      payerEmail = payerUser?.email ?? ''
     } else if (payerGuest) {
       payerName = payerGuest.name
       payerEmail = payerGuest.email ?? ''
     } else {
       return
     }
-
-    const { data: household } = await supabase
-      .from('households')
-      .select('name')
-      .eq('id', householdId)
-      .single()
-
-    const householdName = (household as { name: string } | null)?.name ?? APP_NAME
 
     const splits = (raw.expense_splits ?? []) as Array<{
       calculated_amount: number

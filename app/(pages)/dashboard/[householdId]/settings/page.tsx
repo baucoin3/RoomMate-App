@@ -11,6 +11,8 @@ import ItemRulesSection from '../finances/components/settings/ItemRulesSection'
 import RecurringSection from '../finances/components/settings/RecurringSection'
 import GuestsSection from '@/components/guests/GuestsSection'
 
+type Tab = 'members' | 'finances' | 'catalog'
+
 function ChevronIcon({ open }: { open: boolean }) {
   return (
     <svg
@@ -56,6 +58,7 @@ function AccordionSection({ title, defaultOpen = false, children }: AccordionSec
 
 export default function SettingsPage() {
   const { householdId } = useParams<{ householdId: string }>()
+  const [activeTab, setActiveTab] = useState<Tab>('members')
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [householdItems, setHouseholdItems] = useState<HouseholdItem[]>([])
   const [recurring, setRecurring] = useState<RecurringExpense[]>([])
@@ -93,6 +96,12 @@ export default function SettingsPage() {
     return () => { cancelled = true }
   }, [householdId])
 
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'members', label: SETTINGS.TABS.MEMBERS },
+    { key: 'finances', label: SETTINGS.TABS.FINANCES },
+    { key: 'catalog', label: SETTINGS.TABS.CATALOG },
+  ]
+
   if (loading) {
     return (
       <div className="flex flex-col gap-3 pt-1 pb-24 md:pb-6">
@@ -124,37 +133,86 @@ export default function SettingsPage() {
         <p className="text-xs text-white/40 mt-0.5">{SETTINGS.SUBTITLE}</p>
       </div>
 
-      <AccordionSection title={FINANCES.SETTINGS.RECURRING_TITLE}>
-        <RecurringSection
-          householdId={householdId}
-          recurring={recurring}
-          members={members}
-          onRecurringChanged={(updater) => setRecurring(updater)}
-        />
-      </AccordionSection>
+      {/* Tab bar */}
+      <div className="flex items-center gap-2">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+              activeTab === tab.key
+                ? 'bg-white text-black'
+                : 'border border-white/15 text-white/50 hover:text-white/80 hover:border-white/30'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-      <AccordionSection title={FINANCES.SETTINGS.CATEGORIES_TITLE} defaultOpen>
-        <CategoriesSection
-          householdId={householdId}
-          categories={categories}
-          members={members}
-          onCategoriesChanged={(updater) => setCategories(updater)}
-        />
-      </AccordionSection>
+      {/* Members tab */}
+      {activeTab === 'members' && (
+        <div className="flex flex-col gap-4">
+          <AccordionSection title={SETTINGS.MEMBERS_SECTION_TITLE} defaultOpen>
+            {members.length === 0 ? (
+              <p className="text-sm text-white/40">No members found.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {members.map((m) => (
+                  <li key={m.id} className="flex items-center gap-3">
+                    <span className="flex items-center justify-center w-7 h-7 rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-semibold shrink-0">
+                      {m.nickname.charAt(0).toUpperCase()}
+                    </span>
+                    <span className="text-sm text-white">{m.nickname}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </AccordionSection>
 
-      <AccordionSection title={FINANCES.SETTINGS.HOUSEHOLD_ITEMS_TITLE}>
-        <ItemRulesSection
-          householdId={householdId}
-          items={householdItems}
-          categories={categories}
-          members={members}
-          onItemsChanged={(updater) => setHouseholdItems(updater)}
-        />
-      </AccordionSection>
+          <AccordionSection title={GUESTS.SECTION_TITLE}>
+            <GuestsSection householdId={householdId} />
+          </AccordionSection>
+        </div>
+      )}
 
-      <AccordionSection title={GUESTS.SECTION_TITLE}>
-        <GuestsSection householdId={householdId} />
-      </AccordionSection>
+      {/* Finances tab */}
+      {activeTab === 'finances' && (
+        <div className="flex flex-col gap-4">
+          <AccordionSection title={FINANCES.SETTINGS.RECURRING_TITLE}>
+            <RecurringSection
+              householdId={householdId}
+              recurring={recurring}
+              members={members}
+              onRecurringChanged={(updater) => setRecurring(updater)}
+            />
+          </AccordionSection>
+        </div>
+      )}
+
+      {/* Catalog tab */}
+      {activeTab === 'catalog' && (
+        <div className="flex flex-col gap-4">
+          <AccordionSection title={FINANCES.SETTINGS.CATEGORIES_TITLE} defaultOpen>
+            <CategoriesSection
+              householdId={householdId}
+              categories={categories}
+              members={members}
+              onCategoriesChanged={(updater) => setCategories(updater)}
+            />
+          </AccordionSection>
+
+          <AccordionSection title={FINANCES.SETTINGS.HOUSEHOLD_ITEMS_TITLE}>
+            <ItemRulesSection
+              householdId={householdId}
+              items={householdItems}
+              categories={categories}
+              members={members}
+              onItemsChanged={(updater) => setHouseholdItems(updater)}
+            />
+          </AccordionSection>
+        </div>
+      )}
     </div>
   )
 }

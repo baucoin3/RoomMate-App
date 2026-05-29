@@ -1,140 +1,86 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { DashboardData, RentStatus, Balance, ActivityItem } from '@/lib/types/dashboard'
+import type { DashboardData, ActivityItem, RecurringBillAlert, GetStartedStatus } from '@/lib/types/dashboard'
+import { getCurrentCycleDueDate, isDateInCycle } from '@/lib/utils/recurringCycle'
 
 function diffDays(from: Date, to: Date): number {
   return Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24))
 }
 
-async function fetchRentStatus(
+async function fetchGetStartedStatus(
   supabase: SupabaseClient,
   householdId: string,
-  currentMemberId: string,
-): Promise<RentStatus | null> {
+): Promise<GetStartedStatus> {
   try {
-    const { data: expense, error } = await supabase
-      .from('expenses')
-      .select(`
-        id,
-        description,
-        total_amount,
-        date,
-        paid_by_member_id,
-        expense_splits (
-          id,
-          household_member_id,
-          calculated_amount,
-          is_settled,
-          household_members ( id, nickname, user_id )
-        ),
-        expense_categories ( name )
-      `)
-      .eq('household_id', householdId)
-      .ilike('expense_categories.name', 'rent')
-      .not('expense_categories', 'is', null)
-      .order('date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (error || !expense) return null
-
-    const expenseDate = new Date(expense.date)
-    const dueDate = new Date(expenseDate)
-    dueDate.setDate(expenseDate.getDate() + 30)
-    const daysUntilDue = diffDays(new Date(), dueDate)
-
-    const splits = (expense.expense_splits ?? []) as unknown as Array<{
-      id: string
-      household_member_id: string
-      calculated_amount: number | null
-      is_settled: boolean
-      household_members: { id: string; nickname: string | null; user_id: string } | null
-    }>
-
-    const members = splits.map((split) => ({
-      memberId: split.household_member_id,
-      memberName: split.household_members?.nickname ?? 'Unknown',
-      hasPaid: split.is_settled,
-      shareAmount: Number(split.calculated_amount ?? 0),
-    }))
+    const [householdResult, recurringResult, membersResult] = await Promise.all([
+      supabase.from('households').select('name').eq('id', householdId).single(),
+      supabase
+        .from('recurring_expenses')
+        .select('id', { count: 'exact', head: true })
+        .eq('household_id', householdId)
+        .eq('is_active', true),
+      supabase
+        .from('household_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('household_id', householdId),
+    ])
 
     return {
-      expenseId: expense.id,
-      description: expense.description,
-      totalAmount: Number(expense.total_amount),
-      dueDate: dueDate.toISOString(),
-      daysUntilDue,
-      members,
-      paidCount: members.filter((m) => m.hasPaid).length,
-      totalCount: members.length,
-      paidByMemberId: (expense as unknown as { paid_by_member_id: string }).paid_by_member_id,
-      currentMemberId,
+      hasHouseholdName: !!(householdResult.data?.name?.trim()),
+      hasRecurringBills: (recurringResult.count ?? 0) > 0,
+      hasMultipleMembers: (membersResult.count ?? 0) > 1,
     }
   } catch (err) {
-    console.error('[dashboard/rentStatus]', err)
-    return null
+    console.error('[dashboard/getStarted]', err)
+    return { hasHouseholdName: false, hasRecurringBills: false, hasMultipleMembers: false }
   }
 }
 
-async function fetchBalances(
+async function fetchRecurringAlerts(
   supabase: SupabaseClient,
   householdId: string,
-  currentMemberId: string,
-): Promise<Balance[]> {
+): Promise<RecurringBillAlert[]> {
   try {
-    const { data: splits, error } = await supabase
-      .from('expense_splits')
-      .select(`
-        household_member_id,
-        calculated_amount,
-        is_settled,
-        expenses!inner (
-          household_id,
-          paid_by_member_id
-        ),
-        household_members!inner (
-          id,
-          nickname,
-          user_id
-        )
-      `)
-      .eq('expenses.household_id', householdId)
-      .eq('is_settled', false)
+    const { data: bills, error: billsErr } = await supabase
+      .from('recurring_expenses')
+      .select('id, description, amount, due_day_of_month, alert_days_before')
+      .eq('household_id', householdId)
+      .eq('is_active', true)
 
-    if (error || !splits) return []
+    if (billsErr || !bills?.length) return []
 
-    type SplitRow = {
-      household_member_id: string
-      calculated_amount: number
-      is_settled: boolean
-      expenses: { household_id: string; paid_by_member_id: string }
-      household_members: { id: string; nickname: string | null; user_id: string }
+    const { data: loggedExpenses } = await supabase
+      .from('expenses')
+      .select('recurring_expense_id, date')
+      .in('recurring_expense_id', bills.map((b) => b.id))
+
+    const today = new Date()
+    const alerts: RecurringBillAlert[] = []
+
+    for (const bill of bills) {
+      const cycleDueDate = getCurrentCycleDueDate(bill.due_day_of_month)
+      const isLogged = (loggedExpenses ?? []).some(
+        (e) =>
+          e.recurring_expense_id === bill.id &&
+          isDateInCycle(e.date, cycleDueDate),
+      )
+      if (isLogged) continue
+
+      const daysUntilDue = diffDays(today, new Date(cycleDueDate))
+      if (daysUntilDue > bill.alert_days_before) continue
+
+      alerts.push({
+        id: bill.id,
+        description: bill.description,
+        totalAmount: Number(bill.amount),
+        dueDayOfMonth: bill.due_day_of_month,
+        daysUntilDue,
+        cycleDueDate,
+      })
     }
 
-    const netMap = new Map<string, { name: string; net: number }>()
-
-    for (const split of splits as unknown as SplitRow[]) {
-      const { household_member_id, calculated_amount, expenses: expense, household_members: member } = split
-      const amount = Number(calculated_amount)
-
-      if (expense.paid_by_member_id === currentMemberId && household_member_id !== currentMemberId) {
-        const existing = netMap.get(household_member_id) ?? { name: member.nickname ?? 'Unknown', net: 0 }
-        netMap.set(household_member_id, { ...existing, net: existing.net + amount })
-      }
-
-      if (household_member_id === currentMemberId && expense.paid_by_member_id !== currentMemberId) {
-        const payerId = expense.paid_by_member_id
-        const existing = netMap.get(payerId) ?? { name: 'Unknown', net: 0 }
-        netMap.set(payerId, { ...existing, net: existing.net - amount })
-      }
-    }
-
-    return Array.from(netMap.entries()).map(([memberId, { name, net }]) => ({
-      memberId,
-      memberName: name,
-      netAmount: Math.round(net * 100) / 100,
-    }))
+    return alerts.sort((a, b) => a.daysUntilDue - b.daysUntilDue)
   } catch (err) {
-    console.error('[dashboard/balances]', err)
+    console.error('[dashboard/recurringAlerts]', err)
     return []
   }
 }
@@ -205,7 +151,7 @@ async function fetchRecentActivity(
 
     return [...expenseItems, ...shoppingItems]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 5)
+      .slice(0, 3)
   } catch (err) {
     console.error('[dashboard/recentActivity]', err)
     return []
@@ -215,16 +161,15 @@ async function fetchRecentActivity(
 export async function getDashboardData(
   supabase: SupabaseClient,
   householdId: string,
-  currentMemberId: string,
 ): Promise<{ data: DashboardData | null; error: string | null }> {
   try {
-    const [rentStatus, balances, recentActivity] = await Promise.all([
-      fetchRentStatus(supabase, householdId, currentMemberId),
-      fetchBalances(supabase, householdId, currentMemberId),
+    const [getStarted, recurringAlerts, recentActivity] = await Promise.all([
+      fetchGetStartedStatus(supabase, householdId),
+      fetchRecurringAlerts(supabase, householdId),
       fetchRecentActivity(supabase, householdId),
     ])
 
-    return { data: { rentStatus, balances, recentActivity }, error: null }
+    return { data: { getStarted, recurringAlerts, recentActivity }, error: null }
   } catch (err) {
     console.error('[dashboard/getDashboardData]', err)
     return { data: null, error: 'Failed to load dashboard data.' }

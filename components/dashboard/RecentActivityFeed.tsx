@@ -53,7 +53,7 @@ export default function RecentActivityFeed({ data }: RecentActivityFeedProps) {
         <p className="text-sm text-white/40">{HOUSEHOLD_DASHBOARD.ACTIVITY.EMPTY}</p>
       ) : (
         <div className="flex flex-col gap-4">
-          {data.slice(0, 5).map((item) => (
+          {data.slice(0, 3).map((item) => (
             <ActivityRow key={item.id} item={item} />
           ))}
         </div>

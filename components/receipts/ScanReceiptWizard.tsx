@@ -477,8 +477,6 @@ export default function ScanReceiptWizard({
       setTax(analysis.tax !== null ? String(analysis.tax) : '')
       setLineItems(analysis.line_items)
     } catch (err) {
-      console.log(err)
-      console.log('dogs')
       console.error('[ScanReceiptWizard] analyze', err)
       const message = getErrorMessage(err)
       if (message === RECEIPTS.ERRORS.NOT_A_RECEIPT) {
