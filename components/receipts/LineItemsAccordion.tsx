@@ -6,7 +6,7 @@ import { RECEIPTS } from '@/locales/en'
 interface LineItem {
   description: string
   amount: number
-  quantity: number
+  quantity: number | null
 }
 
 interface LineItemsAccordionProps {

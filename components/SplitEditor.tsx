@@ -37,6 +37,13 @@ export default function SplitEditor({ members, value, onChange, totalAmount, sho
   const amountInputTotal = totalAmount ?? 0
   const canEditAmounts = showAmountInputs && amountInputTotal > 0
 
+  // Only show members who are currently participating in the split.
+  // Fall back to all members when value is unpopulated (e.g. new splits).
+  const activeMemberIds = new Set(value.map((s) => s.household_member_id))
+  const displayMembers = value.length > 0
+    ? members.filter((m) => activeMemberIds.has(m.id))
+    : members
+
   const getSplitForMember = (memberId: string) =>
     value.find((s) => s.household_member_id === memberId)?.percentage ?? 0
 
@@ -103,14 +110,41 @@ export default function SplitEditor({ members, value, onChange, totalAmount, sho
   }
 
   function handleEqualSplit() {
-    if (members.length === 0) return
-    const percentages = buildEqualPercentages(members.length)
+    const count = value.length > 0 ? value.length : members.length
+    if (count === 0) return
+    const percentages = buildEqualPercentages(count)
     const amounts = canEditAmounts && amountInputTotal > 0
-      ? buildEqualAmounts(amountInputTotal, members.length)
+      ? buildEqualAmounts(amountInputTotal, count)
+      : undefined
+    if (value.length > 0) {
+      onChange(
+        value.map((s, i) => ({
+          ...s,
+          percentage: percentages[i],
+          ...(amounts !== undefined ? { amount: amounts[i] } : {}),
+        })),
+      )
+    } else {
+      onChange(
+        members.map((m, i) => ({
+          household_member_id: m.id,
+          percentage: percentages[i],
+          ...(amounts !== undefined ? { amount: amounts[i] } : {}),
+        })),
+      )
+    }
+  }
+
+  function handleRemoveMember(memberId: string) {
+    const remaining = value.filter((s) => s.household_member_id !== memberId)
+    if (remaining.length === 0) return
+    const percentages = buildEqualPercentages(remaining.length)
+    const amounts = canEditAmounts && amountInputTotal > 0
+      ? buildEqualAmounts(amountInputTotal, remaining.length)
       : undefined
     onChange(
-      members.map((m, i) => ({
-        household_member_id: m.id,
+      remaining.map((s, i) => ({
+        ...s,
         percentage: percentages[i],
         ...(amounts !== undefined ? { amount: amounts[i] } : {}),
       })),
@@ -131,7 +165,7 @@ export default function SplitEditor({ members, value, onChange, totalAmount, sho
       </div>
 
       <div className="flex flex-col gap-1.5">
-        {members.map((member) => (
+        {displayMembers.map((member) => (
           <div key={member.id} className="flex items-center gap-3">
             <span className="flex-1 text-sm text-white/70 truncate">{member.nickname}</span>
             <div className="flex items-center gap-1">
@@ -159,6 +193,18 @@ export default function SplitEditor({ members, value, onChange, totalAmount, sho
                 className="w-16 rounded-lg bg-white/5 border border-white/10 px-2 py-1.5 text-sm text-white text-right outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
               />
               <span className="text-xs text-white/40">%</span>
+              {displayMembers.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => handleRemoveMember(member.id)}
+                  aria-label={FINANCES.SPLIT_EDITOR.REMOVE_MEMBER}
+                  className="ml-0.5 rounded p-0.5 text-white/20 transition-colors hover:text-red-400 focus:outline-none focus-visible:ring-1 focus-visible:ring-red-400"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5" aria-hidden="true">
+                    <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94 5.28 4.22Z" />
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
         ))}

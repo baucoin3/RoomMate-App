@@ -71,6 +71,8 @@ export const HOUSEHOLDS = {
     JOIN: 'Join Household',
     JOIN_VIA_CODE: 'Join via invite code',
     JOINING: 'Joining…',
+    COPY_INVITE_CODE: 'Copy invite code',
+    COPIED: 'Copied!',
   },
   LABELS: {
     HOUSEHOLD_NAME: 'Household Name',
@@ -292,6 +294,7 @@ export const FINANCES = {
     PERCENTAGE_PLACEHOLDER: '0',
     AMOUNT_PLACEHOLDER: '0.00',
     AMOUNT_SUFFIX: '$',
+    REMOVE_MEMBER: 'Remove from split',
   },
   ACTIONS: {
     SAVE: 'Save',
@@ -447,6 +450,8 @@ export const RECEIPTS = {
     EQUAL_SPLIT: 'Equal split',
     TAP_TO_CONFIRM: 'Tap to confirm split',
     TAP_TO_UNCONFIRM: 'Tap to unconfirm',
+    MANUAL_ITEMS_HINT: 'Add items or skip — the total will be split as a single entry.',
+    FALLBACK_ITEM_NAME: 'Receipt total',
   },
   ACTIONS: {
     UPLOAD_PHOTO: 'Upload receipt photo',
@@ -462,6 +467,9 @@ export const RECEIPTS = {
     CONFIGURE_ITEMS_HINT: (n: number) => `${n} item${n === 1 ? '' : 's'} need${n === 1 ? 's' : ''} confirmation`,
     CONFIGURE_ITEMS_COUNT: (n: number) => `${n} item${n === 1 ? '' : 's'}`,
     ADD_ALL_TO_EXPENSE: 'Add all to expense list',
+    SKIP_UPLOAD: 'Enter manually instead',
+    ADD_LINE_ITEM: '+ Add item',
+    REMOVE_LINE_ITEM: 'Remove item',
   },
   SPLITS: {
     GUESTS_ON_RECEIPT: 'Guests on this receipt',
@@ -494,6 +502,7 @@ export const RECEIPTS = {
     SPLITS: 'Split Breakdown',
     NO_IMAGE: 'No image available',
     QUANTITY_ABBR: 'qty',
+    DOWNLOAD_IMAGE: 'Download image',
   },
   ITEM_SETUP: {
     TITLE: 'Set Up Items',

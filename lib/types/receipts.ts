@@ -3,7 +3,7 @@ export interface ReceiptLineItem {
   receipt_id: string
   description: string
   amount: number
-  quantity: number
+  quantity: number | null
 }
 
 export interface LineItemSplitRow {
@@ -19,7 +19,7 @@ export type SetupMode = 'item' | 'category'
 export interface LineItemConfig {
   description: string
   amount: number
-  quantity: number
+  quantity: number | null
   setupMode: SetupMode
   categoryId: string | null
   useCustomSplit: boolean
@@ -51,7 +51,7 @@ export interface Receipt {
   id: string
   household_id: string
   uploaded_by_member_id: string
-  image_url: string
+  image_url: string | null
   merchant_name: string | null
   receipt_date: string | null
   raw_total: number | null
@@ -62,7 +62,7 @@ export interface Receipt {
 export interface ReceiptAnalysisLineItem {
   description: string
   amount: number
-  quantity: number
+  quantity: number | null
   normalized_name?: string | null
   suggested_category_name?: string | null
   probable_names?: string[]
@@ -80,12 +80,12 @@ export interface ReceiptAnalysis {
 
 export interface SaveReceiptPayload {
   household_id: string
-  image_url: string
+  image_url: string | null
   merchant_name: string | null
   receipt_date: string | null
   raw_total: number
-  ai_extracted_data: ReceiptAnalysis
-  line_items: Array<{ description: string; amount: number; quantity: number }>
+  ai_extracted_data: ReceiptAnalysis | null
+  line_items: Array<{ description: string; amount: number; quantity: number | null }>
   category_id: string | null
   description: string
   uploaded_by_member_id: string
