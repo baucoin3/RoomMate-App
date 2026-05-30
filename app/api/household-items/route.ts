@@ -20,6 +20,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: AUTH.ERRORS.UNAUTHORIZED }, { status: 401 })
     }
 
+    const memberId = await getMemberIdForUser(supabase, householdId, user.id)
+    if (!memberId) {
+      return NextResponse.json({ error: FINANCES.ERRORS.FORBIDDEN }, { status: 403 })
+    }
+
     let query = supabase
       .from('household_items')
       .select('id, name, default_category_id')

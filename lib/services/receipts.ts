@@ -34,7 +34,6 @@ export async function analyzeReceipt(
   }
 
   try {
-    console.log(`\n\n[analyzeReceipt] Starting analysis for image: ${imageUrl}\n\n`)
     const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY })
 
     const categoryInstruction = categoryNames.length > 0
@@ -53,15 +52,7 @@ export async function analyzeReceipt(
       ],
     }
 
-    console.log(
-      `\n\n\n[analyzeReceipt] Anthropic INPUT:\n${JSON.stringify(anthropicInput, null, 2)}\n\n\n`,
-    )
-
     const message = await client.messages.create(anthropicInput)
-
-    console.log(
-      `\n\n\n[analyzeReceipt] Anthropic OUTPUT:\n${JSON.stringify(message, null, 2)}\n\n\n`,
-    )
 
     const textBlock = message.content.find((b) => b.type === 'text')
     if (!textBlock || textBlock.type !== 'text') {

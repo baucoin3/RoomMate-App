@@ -1,35 +1,3 @@
-/**
- * Dashboard domain types.
- * All three sections may be null/empty if no data exists yet.
- */
-
-export interface RentMember {
-  memberId: string
-  memberName: string
-  hasPaid: boolean
-  shareAmount: number
-}
-
-export interface RentStatus {
-  expenseId: string
-  description: string
-  totalAmount: number
-  dueDate: string
-  daysUntilDue: number
-  members: RentMember[]
-  paidCount: number
-  totalCount: number
-  paidByMemberId: string
-  currentMemberId: string
-}
-
-export interface Balance {
-  memberId: string
-  memberName: string
-  /** Positive: they owe you. Negative: you owe them. */
-  netAmount: number
-}
-
 export type ActivityItemType = 'expense' | 'shopping_item'
 
 export interface ActivityItem {
@@ -41,8 +9,24 @@ export interface ActivityItem {
   createdAt: string
 }
 
+export interface RecurringBillAlert {
+  id: string
+  description: string
+  totalAmount: number
+  dueDayOfMonth: number
+  /** Negative means overdue */
+  daysUntilDue: number
+  cycleDueDate: string
+}
+
+export interface GetStartedStatus {
+  hasHouseholdName: boolean
+  hasRecurringBills: boolean
+  hasMultipleMembers: boolean
+}
+
 export interface DashboardData {
-  rentStatus: RentStatus | null
-  balances: Balance[]
+  getStarted: GetStartedStatus
+  recurringAlerts: RecurringBillAlert[]
   recentActivity: ActivityItem[]
 }

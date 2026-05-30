@@ -24,12 +24,18 @@ export default function ReceiptCard({ receipt, householdId }: ReceiptCardProps) 
   return (
     <Link href={ROUTES.RECEIPT_DETAIL(householdId, receipt.id)} className="block">
       <div className="bg-[#1c1c24] border border-white/5 rounded-xl p-4 flex gap-4 hover:border-white/10 hover:ring-2 hover:ring-primary/40 cursor-pointer transition-all">
-        <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-white/5">
-          <img
-            src={receipt.image_url}
-            alt={receipt.merchant_name ?? 'Receipt'}
-            className="w-full h-full object-cover"
-          />
+        <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-white/5 flex items-center justify-center">
+          {receipt.image_url ? (
+            <img
+              src={receipt.image_url}
+              alt={receipt.merchant_name ?? 'Receipt'}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-8 h-8 text-white/20" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 14.25l6-6m4.5-3.493V21.75l-3.75-1.5-3.75 1.5-3.75-1.5-3.75 1.5V4.757c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0c1.1.128 1.907 1.077 1.907 2.185z" />
+            </svg>
+          )}
         </div>
 
         <div className="flex-1 min-w-0">

@@ -14,6 +14,15 @@ export default async function HouseholdLayout({ children, params }: HouseholdLay
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect(ROUTES.LOGIN)
 
+  const { data: membership } = await supabase
+    .from('household_members')
+    .select('id')
+    .eq('household_id', params.householdId)
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (!membership) redirect(ROUTES.DASHBOARD)
+
   const { data: household } = await supabase
     .from('households')
     .select('name')

@@ -7,6 +7,7 @@ import { HOUSEHOLD_NAV } from '@/lib/config/nav'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import { ROUTES } from '@/lib/constants/routes'
 import { NAV } from '@/locales/en'
+import ScanReceiptFab from '@/components/receipts/ScanReceiptFab'
 
 interface HouseholdShellProps {
   children: React.ReactNode
@@ -195,6 +196,8 @@ export default function HouseholdShell({
           {children}
         </main>
       </div>
+
+      <ScanReceiptFab householdId={householdId} />
 
       {/* Mobile bottom tab bar */}
       <nav

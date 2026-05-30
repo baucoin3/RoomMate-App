@@ -71,6 +71,8 @@ export const HOUSEHOLDS = {
     JOIN: 'Join Household',
     JOIN_VIA_CODE: 'Join via invite code',
     JOINING: 'Joining…',
+    COPY_INVITE_CODE: 'Copy invite code',
+    COPIED: 'Copied!',
   },
   LABELS: {
     HOUSEHOLD_NAME: 'Household Name',
@@ -122,6 +124,11 @@ export const NAV = {
   ERRORS: {
     SIGN_OUT: 'Failed to sign out. Please try again.',
   },
+  ITEMS: {
+    HOUSEHOLD: 'Household',
+    SETTINGS: 'Settings',
+  },
+  APP_SETTINGS_ARIA: 'App settings',
 } as const
 
 export const ERRORS = {
@@ -241,6 +248,7 @@ export const FINANCES = {
     GO_TO_SETTINGS: 'Set up in Settings',
     MEMBER_HAS_PAID: (name: string) => `${name} has paid`,
     YOU_HAVE_PAID: 'You have paid',
+    THIRD_PARTY_OWES: (name: string, payer: string, amount: string) => `${name} owes ${payer} $${amount}`,
   },
   SETTINGS: {
     CATEGORIES_TITLE: 'Categories',
@@ -286,6 +294,7 @@ export const FINANCES = {
     PERCENTAGE_PLACEHOLDER: '0',
     AMOUNT_PLACEHOLDER: '0.00',
     AMOUNT_SUFFIX: '$',
+    REMOVE_MEMBER: 'Remove from split',
   },
   ACTIONS: {
     SAVE: 'Save',
@@ -339,6 +348,9 @@ export const RECIPES = {
     DELETE_CONFIRM: 'Confirm delete',
     INGREDIENTS_HEADING: 'Ingredients',
     STEPS_HEADING: 'Instructions',
+    INGREDIENT_EXCLUDE_LABEL: 'Exclude ingredient',
+    STEP_EXCLUDE_LABEL: 'Exclude step',
+    RESET_EXCLUDED: 'Reset',
   },
   FORM: {
     NAME_LABEL: 'Recipe name',
@@ -380,29 +392,6 @@ export const RECIPES = {
   NEW: {
     PAGE_TITLE: 'New recipe',
     PAGE_SUBTITLE: '— share something delicious',
-    /** @deprecated use RECIPES.FORM.* */
-    NAME_LABEL: 'Recipe name',
-    NAME_PLACEHOLDER: 'e.g. Banana Walnut Bread',
-    CATEGORY_LABEL: 'Category tag',
-    CATEGORY_PLACEHOLDER: 'e.g. Breakfast, Dinner…',
-    DESCRIPTION_LABEL: 'Description',
-    DESCRIPTION_OPTIONAL: '(optional)',
-    DESCRIPTION_PLACEHOLDER: 'A few words about this recipe — where it came from, what makes it special…',
-    INGREDIENTS_HEADING: 'Ingredients',
-    INGREDIENT_NAME_PLACEHOLDER: 'e.g. Ripe bananas',
-    INGREDIENT_QTY_PLACEHOLDER: '3 large',
-    ADD_INGREDIENT: '+ Add ingredient',
-    STEPS_HEADING: 'Instructions',
-    STEP_PLACEHOLDER: 'Describe this step…',
-    ADD_STEP: '+ Add step',
-    CANCEL: 'Cancel',
-    SAVE: 'Save recipe',
-    SAVING: 'Saving…',
-    ERROR_TITLE_REQUIRED: 'Please add a recipe name.',
-    ERROR_INGREDIENT_REQUIRED: 'Please add at least one ingredient.',
-    ERROR_INGREDIENT_AMOUNT_REQUIRED: 'All ingredients must have an amount.',
-    ERROR_STEP_REQUIRED: 'Please add at least one step.',
-    ERROR_SAVE_FAILED: 'Could not save the recipe. Please try again.',
   },
   EDIT: {
     PAGE_TITLE: 'Edit recipe',
@@ -461,6 +450,8 @@ export const RECEIPTS = {
     EQUAL_SPLIT: 'Equal split',
     TAP_TO_CONFIRM: 'Tap to confirm split',
     TAP_TO_UNCONFIRM: 'Tap to unconfirm',
+    MANUAL_ITEMS_HINT: 'Add items or skip — the total will be split as a single entry.',
+    FALLBACK_ITEM_NAME: 'Receipt total',
   },
   ACTIONS: {
     UPLOAD_PHOTO: 'Upload receipt photo',
@@ -476,6 +467,9 @@ export const RECEIPTS = {
     CONFIGURE_ITEMS_HINT: (n: number) => `${n} item${n === 1 ? '' : 's'} need${n === 1 ? 's' : ''} confirmation`,
     CONFIGURE_ITEMS_COUNT: (n: number) => `${n} item${n === 1 ? '' : 's'}`,
     ADD_ALL_TO_EXPENSE: 'Add all to expense list',
+    SKIP_UPLOAD: 'Enter manually instead',
+    ADD_LINE_ITEM: '+ Add item',
+    REMOVE_LINE_ITEM: 'Remove item',
   },
   SPLITS: {
     GUESTS_ON_RECEIPT: 'Guests on this receipt',
@@ -503,12 +497,12 @@ export const RECEIPTS = {
   DETAIL: {
     TITLE: 'Receipt Details',
     BACK: '← Back to receipts',
-    SHOW_IMAGE: 'Show receipt image',
-    HIDE_IMAGE: 'Hide receipt image',
+    IMAGE_SECTION: 'Receipt image',
     LINE_ITEMS: 'Line Items',
     SPLITS: 'Split Breakdown',
     NO_IMAGE: 'No image available',
     QUANTITY_ABBR: 'qty',
+    DOWNLOAD_IMAGE: 'Download image',
   },
   ITEM_SETUP: {
     TITLE: 'Set Up Items',
@@ -573,8 +567,14 @@ function ordinal(n: number): string {
 }
 
 export const SETTINGS = {
-  TITLE: 'Catalog & Bills',
-  SUBTITLE: 'Household item catalog, categories, and recurring bills',
+  TITLE: 'Household',
+  SUBTITLE: 'Manage members, finances, and your item catalog',
+  TABS: {
+    MEMBERS: 'Members',
+    FINANCES: 'Finances',
+    CATALOG: 'Catalog',
+  },
+  MEMBERS_SECTION_TITLE: 'Household Members',
 } as const
 
 export const GUESTS = {
@@ -668,25 +668,29 @@ export const GUESTS = {
 } as const
 
 export const HOUSEHOLD_DASHBOARD = {
-  RENT: {
-    TITLE: 'Rent',
-    DAYS_UNTIL_DUE: (days: number) => `${days} days`,
-    DAY_UNTIL_DUE: '1 day',
-    PAID_STATUS: (paid: number, total: number) => `${paid} of ${total} paid`,
-    ACROSS_EXPENSES: 'across 3 expenses',
-    EMPTY: 'No rent expense found — add one in Finances.',
-    OWES_YOU: (name: string, amount: string) => `${name} owes you $${amount}`,
-    OWES_YOU_PAID: (name: string) => `${name} has paid`,
-    YOU_OWE: (name: string, amount: string) => `You owe ${name} $${amount}`,
-    YOU_HAVE_PAID: 'You have paid',
-    THIRD_PARTY_OWES: (name: string, payer: string, amount: string) => `${name} owes ${payer} $${amount}`,
-    THIRD_PARTY_PAID: (name: string) => `${name} has paid`,
+  QUICK_ACTIONS: {
+    SCAN: 'Scan Receipt',
+    BILLS: 'Bills',
+    SHOPPING: 'Shopping',
   },
-  BALANCES: {
-    TITLE: 'Balances',
-    OWES_YOU: (name: string, amount: string) => `${name} owes you ${amount}`,
-    YOU_OWE: (name: string, amount: string) => `You owe ${name} ${amount}`,
-    EMPTY: 'All settled up.',
+  GET_STARTED: {
+    TITLE: 'Get Started',
+    HOUSEHOLD_NAME: 'Set your household name',
+    RECURRING_BILLS: 'Add recurring bills',
+    INVITE_MEMBERS: 'Invite your roommates',
+  },
+  BILL_ALERTS: {
+    TITLE: 'Upcoming Bills',
+    ALL_CAUGHT_UP: 'All recurring bills are up to date.',
+    DUE_IN: (days: number) => `Due in ${days} day${days === 1 ? '' : 's'}`,
+    DUE_TODAY: 'Due today',
+    OVERDUE: 'Overdue',
+    VIEW_ALL: 'View all in Bills →',
+  },
+  RECIPES: {
+    TITLE: 'Recipes',
+    SUBTITLE: 'Browse your household cookbook',
+    VIEW_ALL: 'View all →',
   },
   ACTIVITY: {
     TITLE: 'Recent Activity',

@@ -21,8 +21,37 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      stroke="currentColor"
+      className={`h-4 w-4 transition-transform duration-200 text-white/40 ${open ? 'rotate-180' : ''}`}
+      aria-hidden="true"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+    </svg>
+  )
+}
+
+async function downloadReceiptImage(imageUrl: string, merchantName: string) {
+  const res = await fetch(imageUrl)
+  const blob = await res.blob()
+  const objectUrl = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = objectUrl
+  a.download = `receipt-${merchantName || 'image'}.${blob.type.split('/')[1] ?? 'jpg'}`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(objectUrl)
+}
+
 export default function ReceiptDetailClient({ receipt, householdId }: ReceiptDetailClientProps) {
-  const [imageOpen, setImageOpen] = useState(true)
+  const [imageOpen, setImageOpen] = useState(false)
 
   return (
     <div className="flex flex-col pt-1 pb-24 md:pb-4">
@@ -52,26 +81,41 @@ export default function ReceiptDetailClient({ receipt, householdId }: ReceiptDet
         </div>
       </div>
 
-      <div className="bg-[#1c1c24] border border-white/5 rounded-xl p-4 mb-4">
+      <div className="bg-[#1c1c24] border border-white/5 rounded-xl overflow-hidden mb-4">
         {receipt.imageUrl ? (
           <>
             <button
               type="button"
               onClick={() => setImageOpen((prev) => !prev)}
-              className="text-sm text-indigo-300 hover:text-indigo-200 transition-colors mb-3"
+              className="w-full flex items-center justify-between px-4 py-3 text-left"
+              aria-expanded={imageOpen}
             >
-              {imageOpen ? RECEIPTS.DETAIL.HIDE_IMAGE : RECEIPTS.DETAIL.SHOW_IMAGE}
+              <span className="text-sm font-semibold text-white">{RECEIPTS.DETAIL.IMAGE_SECTION}</span>
+              <ChevronIcon open={imageOpen} />
             </button>
             {imageOpen && (
-              <img
-                src={receipt.imageUrl}
-                alt={receipt.merchantName}
-                className="w-full object-contain max-h-96 rounded-lg"
-              />
+              <div className="px-4 pb-4 border-t border-white/5 pt-3 flex flex-col gap-3">
+                <img
+                  src={receipt.imageUrl}
+                  alt={receipt.merchantName}
+                  className="w-full object-contain max-h-96 rounded-lg"
+                />
+                <button
+                  type="button"
+                  onClick={() => downloadReceiptImage(receipt.imageUrl!, receipt.merchantName)}
+                  className="self-end flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5" aria-hidden="true">
+                    <path d="M8.75 2.75a.75.75 0 0 0-1.5 0v5.69L5.03 6.22a.75.75 0 0 0-1.06 1.06l3.5 3.5a.75.75 0 0 0 1.06 0l3.5-3.5a.75.75 0 0 0-1.06-1.06L8.75 8.44V2.75Z" />
+                    <path d="M3.5 9.75a.75.75 0 0 0-1.5 0v1.5A2.75 2.75 0 0 0 4.75 14h6.5A2.75 2.75 0 0 0 14 11.25v-1.5a.75.75 0 0 0-1.5 0v1.5c0 .69-.56 1.25-1.25 1.25h-6.5c-.69 0-1.25-.56-1.25-1.25v-1.5Z" />
+                  </svg>
+                  {RECEIPTS.DETAIL.DOWNLOAD_IMAGE}
+                </button>
+              </div>
             )}
           </>
         ) : (
-          <p className="text-sm text-white/40">{RECEIPTS.DETAIL.NO_IMAGE}</p>
+          <p className="px-4 py-3 text-sm text-white/40">{RECEIPTS.DETAIL.NO_IMAGE}</p>
         )}
       </div>
 

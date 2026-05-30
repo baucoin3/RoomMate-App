@@ -30,6 +30,45 @@ interface RecipeFormProps {
 const inputClass =
   'px-3 py-2 text-sm rounded-lg border border-[--color-border-secondary] bg-[--color-background-secondary] text-[--color-text-primary] placeholder:text-[--color-text-tertiary] focus:outline-none focus:border-[--color-border-primary] transition-colors w-full'
 
+function GripHandle() {
+  return (
+    <svg
+      width="10"
+      height="16"
+      viewBox="0 0 10 16"
+      fill="currentColor"
+      className="text-[--color-text-tertiary] cursor-grab active:cursor-grabbing"
+    >
+      <circle cx="2" cy="2" r="1.5" />
+      <circle cx="2" cy="7" r="1.5" />
+      <circle cx="2" cy="12" r="1.5" />
+      <circle cx="8" cy="2" r="1.5" />
+      <circle cx="8" cy="7" r="1.5" />
+      <circle cx="8" cy="12" r="1.5" />
+    </svg>
+  )
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
+      />
+    </svg>
+  )
+}
+
 function OrnamentalDivider() {
   return (
     <div className="flex items-center gap-3 my-6">
@@ -147,9 +186,6 @@ export default function RecipeForm({ mode, householdId, initialData, existingTag
       }
 
       const { data: urlData } = supabase.storage.from(RECIPES_BUCKET).getPublicUrl(path)
-      console.log(`\n\n inside the upload image function\n\n`)
-      console.log(`urlData = ${JSON.stringify(urlData)}`)
-      console.log(`publicUrl = ${urlData.publicUrl}`)
       return urlData.publicUrl
     },
     [imageFile, name],
@@ -168,6 +204,42 @@ export default function RecipeForm({ mode, householdId, initialData, existingTag
 
   function updateIngredient(idx: number, field: keyof IngredientRow, value: string) {
     setIngredients((prev) => prev.map((row, i) => (i === idx ? { ...row, [field]: value } : row)))
+  }
+
+  // ── Ingredient drag-and-drop ───────────────────────────────────────────────
+
+  const dragIndexRef = useRef<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+
+  function handleIngredientDragStart(idx: number) {
+    dragIndexRef.current = idx
+  }
+
+  function handleIngredientDragOver(e: React.DragEvent, idx: number) {
+    e.preventDefault()
+    if (dragIndexRef.current !== null && dragIndexRef.current !== idx) {
+      setDragOverIndex(idx)
+    }
+  }
+
+  function handleIngredientDrop(idx: number) {
+    const from = dragIndexRef.current
+    if (from === null || from === idx) {
+      dragIndexRef.current = null
+      setDragOverIndex(null)
+      return
+    }
+    const updated = [...ingredients]
+    const [moved] = updated.splice(from, 1)
+    updated.splice(idx, 0, moved)
+    setIngredients(updated)
+    dragIndexRef.current = null
+    setDragOverIndex(null)
+  }
+
+  function handleIngredientDragEnd() {
+    dragIndexRef.current = null
+    setDragOverIndex(null)
   }
 
   // ── Step helpers ───────────────────────────────────────────────────────────
@@ -477,7 +549,8 @@ export default function RecipeForm({ mode, householdId, initialData, existingTag
           {RECIPES.FORM.INGREDIENTS_HEADING}
         </h2>
 
-        <div className="grid grid-cols-[2fr_1fr_20px] gap-2 mb-2">
+        <div className="grid grid-cols-[16px_2fr_1fr_28px] gap-2 mb-2">
+          <span />
           <span className="text-[12px] text-[--color-text-tertiary]">
             {RECIPES.FORM.INGREDIENT_COL_NAME}
           </span>
@@ -488,7 +561,20 @@ export default function RecipeForm({ mode, householdId, initialData, existingTag
         </div>
 
         {ingredients.map((row, idx) => (
-          <div key={idx} className="grid grid-cols-[2fr_1fr_20px] gap-2 items-center mb-2">
+          <div
+            key={idx}
+            draggable
+            onDragStart={() => handleIngredientDragStart(idx)}
+            onDragOver={(e) => handleIngredientDragOver(e, idx)}
+            onDrop={() => handleIngredientDrop(idx)}
+            onDragEnd={handleIngredientDragEnd}
+            className={`grid grid-cols-[16px_2fr_1fr_28px] gap-2 items-center mb-2 rounded-lg transition-colors ${
+              dragOverIndex === idx ? 'bg-amber-400/10 ring-1 ring-amber-400/40' : ''
+            }`}
+          >
+            <div className="flex items-center justify-center h-full">
+              <GripHandle />
+            </div>
             <input
               type="text"
               value={row.name}
@@ -507,10 +593,10 @@ export default function RecipeForm({ mode, householdId, initialData, existingTag
               type="button"
               onClick={() => removeIngredient(idx)}
               disabled={ingredients.length <= 1}
-              className="text-[--color-text-tertiary] hover:text-red-400 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center justify-center w-7 h-7 rounded-md text-red-400 hover:text-red-300 hover:bg-red-400/15 transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
               aria-label={RECIPES.FORM.INGREDIENT_REMOVE_LABEL}
             >
-              <i className="ti-x text-[13px]" />
+              <TrashIcon className="h-4 w-4" />
             </button>
           </div>
         ))}
@@ -538,8 +624,8 @@ export default function RecipeForm({ mode, householdId, initialData, existingTag
 
         <div className="flex flex-col gap-2.5">
           {steps.map((row, idx) => (
-            <div key={idx} className="flex gap-2.5 items-start">
-              <span className="w-[26px] h-[26px] rounded-full border border-[--color-border-secondary] flex items-center justify-center text-[12px] font-medium text-[--color-text-secondary] flex-shrink-0 mt-1.5">
+            <div key={idx} className="flex gap-2.5 items-center">
+              <span className="w-[26px] h-[26px] rounded-full border border-[--color-border-secondary] flex items-center justify-center text-[12px] font-medium text-[--color-text-secondary] flex-shrink-0">
                 {idx + 1}
               </span>
               <textarea
@@ -554,10 +640,10 @@ export default function RecipeForm({ mode, householdId, initialData, existingTag
                 type="button"
                 onClick={() => removeStep(idx)}
                 disabled={steps.length <= 1}
-                className="text-[--color-text-tertiary] hover:text-red-400 transition-colors disabled:opacity-30 disabled:cursor-not-allowed mt-1.5"
+                className="flex items-center justify-center w-7 h-7 rounded-md text-red-400 hover:text-red-300 hover:bg-red-400/15 transition-colors disabled:opacity-20 disabled:cursor-not-allowed flex-shrink-0"
                 aria-label={RECIPES.FORM.STEP_REMOVE_LABEL}
               >
-                <i className="ti-x text-[13px]" />
+                <TrashIcon className="h-4 w-4" />
               </button>
             </div>
           ))}

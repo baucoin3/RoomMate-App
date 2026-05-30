@@ -102,7 +102,7 @@ export default function ShopClient({ initialLists, householdId, currentUserId }:
       <button
         onClick={() => setIsModalOpen(true)}
         aria-label={SHOPPING.ACTIONS.NEW_LIST}
-        className="fixed bottom-20 right-5 md:bottom-6 flex items-center gap-2 px-4 py-3 rounded-full bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-semibold shadow-lg transition-colors z-30"
+        className="fixed bottom-36 right-5 md:bottom-24 md:right-5 flex items-center gap-2 px-4 py-3 rounded-full bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-semibold shadow-lg transition-colors z-30"
       >
         <PlusIcon className="h-4 w-4" />
         {SHOPPING.ACTIONS.NEW_LIST}

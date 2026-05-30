@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { AUTH, SHOPPING, ERRORS } from '@/locales/en'
+import { AUTH, SHOPPING, FINANCES, ERRORS } from '@/locales/en'
 import { getListsForHousehold } from '@/lib/services/shopping'
+import { getMemberIdForUser } from '@/lib/services/finances'
 
 export async function GET(request: Request) {
   try {
@@ -47,6 +48,11 @@ export async function POST(request: Request) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
       return NextResponse.json({ error: AUTH.ERRORS.UNAUTHORIZED }, { status: 401 })
+    }
+
+    const memberId = await getMemberIdForUser(supabase, household_id, user.id)
+    if (!memberId) {
+      return NextResponse.json({ error: FINANCES.ERRORS.FORBIDDEN }, { status: 403 })
     }
 
     const resolvedOwnerType = owner_type === 'household' ? 'household' : 'user'
