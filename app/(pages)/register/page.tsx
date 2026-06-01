@@ -7,6 +7,7 @@ import { apiClient, getErrorMessage } from '@/lib/api/client'
 import { AUTH } from '@/locales/en'
 
 export default function RegisterPage() {
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [inviteCode, setInviteCode] = useState('')
@@ -28,7 +29,7 @@ export default function RegisterPage() {
         message: string
         inviteWarning?: string
         inviteMessage?: string
-      }>('/api/auth/register', { email, password, inviteCode: inviteCode.trim() || undefined })
+      }>('/api/auth/register', { name: name.trim(), email, password, inviteCode: inviteCode.trim() || undefined })
 
       if (res.data.inviteWarning) setInviteWarning(res.data.inviteWarning)
       if (res.data.inviteMessage) setInviteMessage(res.data.inviteMessage)
@@ -83,6 +84,22 @@ export default function RegisterPage() {
           <p className="text-sm text-gray-500 mb-6">Get started — it only takes a moment</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+                {AUTH.LABELS.DISPLAY_NAME}
+              </label>
+              <input
+                id="name"
+                type="text"
+                required
+                autoComplete="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                placeholder={AUTH.LABELS.DISPLAY_NAME_PLACEHOLDER}
+              />
+            </div>
+
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                 {AUTH.LABELS.EMAIL}

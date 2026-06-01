@@ -62,6 +62,28 @@ export function BillAlertsSkeleton() {
   )
 }
 
+export function CalendarSkeleton() {
+  return (
+    <SkeletonCard>
+      <div className="flex items-center justify-between mb-4">
+        <SkeletonLine className="h-3 w-8" />
+        <SkeletonLine className="h-3 w-24" />
+        <SkeletonLine className="h-3 w-8" />
+      </div>
+      <div className="grid grid-cols-7 gap-1 mb-2">
+        {[0,1,2,3,4,5,6].map((i) => (
+          <SkeletonLine key={i} className="h-2.5 w-full" />
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {Array.from({ length: 35 }).map((_, i) => (
+          <SkeletonLine key={i} className="h-10 rounded-lg" />
+        ))}
+      </div>
+    </SkeletonCard>
+  )
+}
+
 export function ActivitySkeleton() {
   return (
     <SkeletonCard>

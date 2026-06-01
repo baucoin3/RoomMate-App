@@ -6,19 +6,24 @@ import { AUTH, ERRORS } from '@/locales/en'
 export async function POST(request: Request) {
   try {
     const body: unknown = await request.json()
-    const { email, password, inviteCode } = body as {
+    const { email, password, inviteCode, name } = body as {
       email?: string
       password?: string
       inviteCode?: string
+      name?: string
     }
 
-    if (!email || !password) {
+    if (!email || !password || !name?.trim()) {
       return NextResponse.json({ error: AUTH.ERRORS.REQUIRED_FIELDS }, { status: 400 })
     }
 
     const supabase = createClient()
 
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: name.trim() } },
+    })
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 })
@@ -59,7 +64,7 @@ export async function POST(request: Request) {
       })
     }
 
-    const nickname = email.split('@')[0]
+    const nickname = name.trim() || email.split('@')[0]
 
     const { error: memberError } = await adminClient
       .from('household_members')

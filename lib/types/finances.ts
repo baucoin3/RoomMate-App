@@ -47,6 +47,7 @@ export interface RecurringExpense {
   due_day_of_month: number
   alert_days_before: number
   is_active: boolean
+  color: string
   splits: RecurringExpenseSplit[]
 }
 

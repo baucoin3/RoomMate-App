@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { DashboardData, ActivityItem, RecurringBillAlert, GetStartedStatus } from '@/lib/types/dashboard'
+import type { DashboardData, ActivityItem, RecurringBillAlert, GetStartedStatus, CalendarData } from '@/lib/types/dashboard'
 import { getCurrentCycleDueDate, isDateInCycle } from '@/lib/utils/recurringCycle'
+import { getCalendarData } from '@/lib/services/mealLogs'
 
 function diffDays(from: Date, to: Date): number {
   return Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24))
@@ -158,18 +159,30 @@ async function fetchRecentActivity(
   }
 }
 
+async function fetchCalendarData(supabase: SupabaseClient, householdId: string): Promise<CalendarData> {
+  try {
+    const now = new Date()
+    const { data } = await getCalendarData(supabase, householdId, now.getFullYear(), now.getMonth())
+    return data ?? { meal_logs: [], bill_dots: [] }
+  } catch (err) {
+    console.error('[dashboard/calendarData]', err)
+    return { meal_logs: [], bill_dots: [] }
+  }
+}
+
 export async function getDashboardData(
   supabase: SupabaseClient,
   householdId: string,
 ): Promise<{ data: DashboardData | null; error: string | null }> {
   try {
-    const [getStarted, recurringAlerts, recentActivity] = await Promise.all([
+    const [getStarted, recurringAlerts, recentActivity, calendar] = await Promise.all([
       fetchGetStartedStatus(supabase, householdId),
       fetchRecurringAlerts(supabase, householdId),
       fetchRecentActivity(supabase, householdId),
+      fetchCalendarData(supabase, householdId),
     ])
 
-    return { data: { getStarted, recurringAlerts, recentActivity }, error: null }
+    return { data: { getStarted, recurringAlerts, recentActivity, calendar }, error: null }
   } catch (err) {
     console.error('[dashboard/getDashboardData]', err)
     return { data: null, error: 'Failed to load dashboard data.' }

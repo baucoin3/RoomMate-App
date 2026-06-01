@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: householdError?.message ?? HOUSEHOLDS.ERRORS.CREATE }, { status: 400 })
     }
 
-    const nickname = user.email?.split('@')[0] ?? 'Member'
+    const nickname = (user.user_metadata?.full_name as string | undefined)?.trim() || user.email?.split('@')[0] || 'Member'
     const { error: memberError } = await supabase
       .from('household_members')
       .insert({ household_id: household.id, user_id: user.id, is_rent_owner: true, nickname })

@@ -9,11 +9,13 @@ import GetStartedChecklist from '@/components/dashboard/GetStartedChecklist'
 import RecurringBillAlerts from '@/components/dashboard/RecurringBillAlerts'
 import RecipesCard from '@/components/dashboard/RecipesCard'
 import RecentActivityFeed from '@/components/dashboard/RecentActivityFeed'
+import HouseholdCalendar from '@/components/dashboard/HouseholdCalendar'
 import {
   QuickActionsSkeleton,
   GetStartedSkeleton,
   BillAlertsSkeleton,
   ActivitySkeleton,
+  CalendarSkeleton,
 } from '@/components/dashboard/DashboardSkeleton'
 
 interface HouseholdHubPageProps {
@@ -46,9 +48,19 @@ export default async function HouseholdHubPage({ params }: HouseholdHubPageProps
   }
 
   const data = dashboardResult.data
+  const now = new Date()
 
   return (
     <div className="flex flex-col gap-4 pt-1 pb-20 md:pb-4">
+      <Suspense fallback={<CalendarSkeleton />}>
+        <HouseholdCalendar
+          initialData={data.calendar}
+          householdId={params.householdId}
+          initialYear={now.getFullYear()}
+          initialMonth={now.getMonth()}
+        />
+      </Suspense>
+
       <Suspense fallback={<QuickActionsSkeleton />}>
         <QuickActionsRow householdId={params.householdId} />
       </Suspense>

@@ -44,6 +44,7 @@ export async function POST(request: Request) {
       alert_days_before,
       splits,
       household_id,
+      color,
     } = body as {
       description?: string
       amount?: number
@@ -53,7 +54,10 @@ export async function POST(request: Request) {
       alert_days_before?: number
       splits?: { household_member_id: string; percentage: number; amount: number }[]
       household_id?: string
+      color?: string
     }
+
+    const resolvedColor = color && /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#ef4444'
 
     if (!description?.trim() || amount == null || !paid_by_member_id || !due_day_of_month) {
       return NextResponse.json({ error: FINANCES.ERRORS.REQUIRED_FIELDS }, { status: 400 })
@@ -102,6 +106,7 @@ export async function POST(request: Request) {
         paid_by_member_id,
         due_day_of_month,
         alert_days_before: alert_days_before ?? 3,
+        color: resolvedColor,
       })
       .select('id')
       .single()

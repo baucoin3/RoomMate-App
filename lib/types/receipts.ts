@@ -107,6 +107,19 @@ export interface SaveReceiptPayload {
   alias_inserts?: Array<{ household_item_id: string; display_text: string }>
 }
 
+export type NewHouseholdItemInput = NonNullable<SaveReceiptPayload['new_household_items']>[number]
+
+export interface ResolvedHouseholdItem {
+  /** Trimmed display name stored in DB (last wins among duplicates) */
+  name: string
+  default_category_id: string | null
+  split_overrides: { member_id: string; percentage: number }[] | null
+  item_group: string | null
+  initial_aliases: string[]
+  /** normalizeReceiptText(name) — lookup key only */
+  normalizedName: string
+}
+
 export interface ReceiptLedgerItem extends Receipt {
   expense_id: string | null
   category_name: string | null

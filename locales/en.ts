@@ -22,6 +22,8 @@ export const AUTH = {
     PASSWORD_PLACEHOLDER: '••••••••',
     INVITE_CODE: 'Have an invite code? (optional)',
     INVITE_CODE_PLACEHOLDER: 'e.g. ab12cd34',
+    DISPLAY_NAME: 'Display name',
+    DISPLAY_NAME_PLACEHOLDER: 'e.g. Alex',
   },
   MESSAGES: {
     CONFIRM_EMAIL: 'Check your email to confirm your account.',
@@ -31,7 +33,8 @@ export const AUTH = {
     INVITE_JOINED: 'You have been added to the household.',
   },
   ERRORS: {
-    REQUIRED_FIELDS: 'Email and password are required.',
+    REQUIRED_FIELDS: 'Email, password, and display name are required.',
+    DISPLAY_NAME_REQUIRED: 'Display name is required.',
     DUPLICATE_EMAIL: 'An account with this email already exists.',
     UNAUTHORIZED: 'Unauthorized',
     INVALID_CREDENTIALS: 'Invalid email or password.',
@@ -246,7 +249,7 @@ export const FINANCES = {
     LOGGED_THIS_CYCLE: 'Logged this cycle',
     NO_RECURRING_BILLS: 'No recurring bills set up yet.',
     GO_TO_SETTINGS: 'Set up in Settings',
-    MEMBER_HAS_PAID: (name: string) => `${name} has paid`,
+    MEMBER_HAS_PAID: (name: string) => `${name} Pays this Expense`,
     YOU_HAVE_PAID: 'You have paid',
     THIRD_PARTY_OWES: (name: string, payer: string, amount: string) => `${name} owes ${payer} $${amount}`,
   },
@@ -285,6 +288,7 @@ export const FINANCES = {
     ACTIVE_TOGGLE: 'Active',
     INACTIVE_BADGE: 'Inactive',
     ACTIVE_BADGE: 'Active',
+    COLOR_LABEL: 'Calendar color',
   },
   SPLIT_EDITOR: {
     EQUAL_SPLIT: 'Equal split',
@@ -667,6 +671,19 @@ export const GUESTS = {
   EMPTY_GROUPS_CTA: 'Create a group to bundle recurring guests together.',
 } as const
 
+export const MEAL_LOGS = {
+  MARK_MADE_TODAY: 'Made This Today',
+  MARKING: 'Logging…',
+  DONE: 'Logged!',
+  ERROR: 'Could not log meal. Try again.',
+  RECENT_HEADING: 'Recently made',
+  LAST_MADE: (name: string, daysAgo: number) =>
+    daysAgo === 0 ? `${name} made this today` : `${name} made this ${daysAgo}d ago`,
+  NO_LOGS: 'Not made yet',
+  MENU_EDIT: 'Edit',
+  MENU_MARK_MADE: 'Mark as Made Today',
+} as const
+
 export const HOUSEHOLD_DASHBOARD = {
   QUICK_ACTIONS: {
     SCAN: 'Scan Receipt',
@@ -697,7 +714,30 @@ export const HOUSEHOLD_DASHBOARD = {
     EMPTY: 'No activity yet.',
     TIME_AGO: (label: string) => `${label} ago`,
   },
+  CALENDAR: {
+    TITLE: 'This Month',
+    PREV: 'Previous month',
+    NEXT: 'Next month',
+    DAYS: ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const,
+    BILL_DUE: (name: string) => `${name} — due`,
+    RECIPE_MADE: (person: string, recipe: string) => `${person} made ${recipe}`,
+    MORE_EVENTS: (n: number) => `+${n} more`,
+    LOADING: 'Loading…',
+  },
   ERRORS: {
     LOAD: 'Failed to load dashboard data.',
   },
+} as const
+
+export const BILL_REMINDERS = {
+  PAYER_SUBJECT: (description: string) => `Your ${description} bill is due soon`,
+  PAYER_HEADING: 'Bill Due Reminder',
+  PAYER_BODY: (description: string, amount: string, dueDate: string) =>
+    `Your ${description} bill of ${amount} is due on ${dueDate}. Open the app to confirm it once you've paid.`,
+  MEMBER_SUBJECT: (payerName: string, description: string) =>
+    `${payerName} is waiting on your share for ${description}`,
+  MEMBER_HEADING: 'You have a bill to settle',
+  MEMBER_BODY: (payerName: string, description: string, amount: string) =>
+    `${payerName} paid for ${description}. Your share is ${amount}. Please settle up when you get a chance.`,
+  FOOTER: (household: string) => `Sent on behalf of ${household}.`,
 } as const

@@ -36,6 +36,17 @@ export interface RecipeDetail {
   recipe_steps: RecipeStep[]
 }
 
+export interface MealLog {
+  id: string
+  household_id: string
+  recipe_id: string
+  recipe_name: string
+  made_by_member_id: string
+  made_by_name: string
+  made_at: string
+  notes: string | null
+}
+
 export interface RecipeTag {
   id: string
   household_id: string

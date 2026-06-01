@@ -4,10 +4,10 @@ import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { RECIPES } from '@/locales/en'
+import { RECIPES, MEAL_LOGS } from '@/locales/en'
 import { ROUTES } from '@/lib/constants/routes'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
-import type { RecipeDetail as RecipeDetailType } from '@/lib/types/recipe'
+import type { RecipeDetail as RecipeDetailType, MealLog } from '@/lib/types/recipe'
 
 
 const PLACEHOLDERS = [
@@ -31,14 +31,39 @@ function OrnamentalDivider() {
 interface RecipeDetailProps {
   recipe: RecipeDetailType
   householdId: string
+  initialMealLogs?: MealLog[]
 }
 
-export default function RecipeDetail({ recipe, householdId }: RecipeDetailProps) {
+type LogState = 'idle' | 'logging' | 'done' | 'error'
+
+export default function RecipeDetail({ recipe, householdId, initialMealLogs = [] }: RecipeDetailProps) {
   const router = useRouter()
   const [deleteState, setDeleteState] = useState<'idle' | 'confirm' | 'deleting'>('idle')
   const [deleteError, setDeleteError] = useState('')
   const [excludedIngredients, setExcludedIngredients] = useState<Set<string>>(new Set())
   const [excludedSteps, setExcludedSteps] = useState<Set<string>>(new Set())
+  const [logState, setLogState] = useState<LogState>('idle')
+  const [mealLogs, setMealLogs] = useState<MealLog[]>(initialMealLogs)
+
+  async function handleMarkMadeToday() {
+    setLogState('logging')
+    try {
+      await apiClient.post(`/api/recipes/${recipe.id}/meal-logs`, {
+        household_id: householdId,
+        made_at: new Date().toLocaleDateString('en-CA'),
+      })
+      setLogState('done')
+      const today = new Date().toLocaleDateString('en-CA')
+      setMealLogs((prev) => [
+        { id: 'optimistic', household_id: householdId, recipe_id: recipe.id, recipe_name: recipe.name, made_by_member_id: '', made_by_name: 'You', made_at: today, notes: null },
+        ...prev,
+      ].slice(0, 3))
+      setTimeout(() => setLogState('idle'), 2500)
+    } catch {
+      setLogState('error')
+      setTimeout(() => setLogState('idle'), 2500)
+    }
+  }
 
   function excludeIngredient(id: string) {
     setExcludedIngredients((prev) => new Set(prev).add(id))
@@ -125,7 +150,28 @@ export default function RecipeDetail({ recipe, householdId }: RecipeDetailProps)
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 mt-1">
+        <div className="flex items-center gap-2 shrink-0 mt-1 flex-wrap">
+          <button
+            onClick={() => void handleMarkMadeToday()}
+            disabled={logState === 'logging'}
+            className={`flex items-center gap-1.5 px-3.5 py-2 text-base rounded-md border transition-colors disabled:opacity-60 ${
+              logState === 'done'
+                ? 'border-green-500/40 text-green-400 bg-green-500/10'
+                : logState === 'error'
+                  ? 'border-red-500/40 text-red-400'
+                  : 'border-amber-500/30 text-amber-400 hover:bg-amber-500/10'
+            }`}
+          >
+            <i className={`text-[15px] ${logState === 'done' ? 'ti-check' : 'ti-chef-hat'}`} />
+            {logState === 'logging'
+              ? MEAL_LOGS.MARKING
+              : logState === 'done'
+                ? MEAL_LOGS.DONE
+                : logState === 'error'
+                  ? MEAL_LOGS.ERROR
+                  : MEAL_LOGS.MARK_MADE_TODAY}
+          </button>
+
           <button
             onClick={() => router.push(ROUTES.RECIPE_EDIT(householdId, recipe.id))}
             className="flex items-center gap-1.5 px-3.5 py-2 text-base rounded-md border border-[--color-border-secondary] text-[--color-text-secondary] hover:border-[--color-border-primary] hover:text-[--color-text-primary] transition-colors"
@@ -149,6 +195,26 @@ export default function RecipeDetail({ recipe, householdId }: RecipeDetailProps)
         <p className="text-sm text-red-400 mt-1" role="alert">
           {deleteError}
         </p>
+      )}
+
+      {/* Recent meal logs */}
+      {mealLogs.length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-3">
+          {mealLogs.map((log) => {
+            const daysAgo = Math.round(
+              (Date.now() - new Date(log.made_at).getTime()) / (1000 * 60 * 60 * 24),
+            )
+            return (
+              <span
+                key={log.id}
+                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] bg-[#5DCAA5]/10 border border-[#5DCAA5]/20 text-[#5DCAA5]"
+              >
+                <i className="ti-chef-hat text-[11px]" />
+                {MEAL_LOGS.LAST_MADE(log.made_by_name, daysAgo)}
+              </span>
+            )
+          })}
+        </div>
       )}
 
       <OrnamentalDivider />
