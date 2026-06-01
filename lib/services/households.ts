@@ -48,6 +48,7 @@ export async function joinHouseholdByInviteCode(
   inviteCode: string,
   userId: string,
   userEmail: string,
+  displayName?: string,
 ): Promise<{ data: HouseholdWithMemberCount | null; error: string | null }> {
   const adminClient = createAdminClient()
   const { data: household, error: householdError } = await adminClient
@@ -68,7 +69,7 @@ export async function joinHouseholdByInviteCode(
 
   if (existing) return { data: null, error: HOUSEHOLDS.ERRORS.ALREADY_MEMBER }
 
-  const nickname = userEmail.split('@')[0] ?? 'Member'
+  const nickname = displayName || userEmail.split('@')[0] || 'Member'
   const { error: insertError } = await supabase
     .from('household_members')
     .insert({ household_id: household.id, user_id: userId, nickname, is_rent_owner: false })

@@ -19,11 +19,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: AUTH.ERRORS.UNAUTHORIZED }, { status: 401 })
     }
 
+    const displayName = (user.user_metadata?.full_name as string | undefined)?.trim() || undefined
+
     const { data, error } = await joinHouseholdByInviteCode(
       supabase,
       invite_code,
       user.id,
       user.email ?? '',
+      displayName,
     )
 
     if (error) {

@@ -22,6 +22,8 @@ export const AUTH = {
     PASSWORD_PLACEHOLDER: '••••••••',
     INVITE_CODE: 'Have an invite code? (optional)',
     INVITE_CODE_PLACEHOLDER: 'e.g. ab12cd34',
+    DISPLAY_NAME: 'Display name',
+    DISPLAY_NAME_PLACEHOLDER: 'e.g. Alex',
   },
   MESSAGES: {
     CONFIRM_EMAIL: 'Check your email to confirm your account.',
@@ -31,7 +33,8 @@ export const AUTH = {
     INVITE_JOINED: 'You have been added to the household.',
   },
   ERRORS: {
-    REQUIRED_FIELDS: 'Email and password are required.',
+    REQUIRED_FIELDS: 'Email, password, and display name are required.',
+    DISPLAY_NAME_REQUIRED: 'Display name is required.',
     DUPLICATE_EMAIL: 'An account with this email already exists.',
     UNAUTHORIZED: 'Unauthorized',
     INVALID_CREDENTIALS: 'Invalid email or password.',
@@ -700,4 +703,17 @@ export const HOUSEHOLD_DASHBOARD = {
   ERRORS: {
     LOAD: 'Failed to load dashboard data.',
   },
+} as const
+
+export const BILL_REMINDERS = {
+  PAYER_SUBJECT: (description: string) => `Your ${description} bill is due soon`,
+  PAYER_HEADING: 'Bill Due Reminder',
+  PAYER_BODY: (description: string, amount: string, dueDate: string) =>
+    `Your ${description} bill of ${amount} is due on ${dueDate}. Open the app to confirm it once you've paid.`,
+  MEMBER_SUBJECT: (payerName: string, description: string) =>
+    `${payerName} is waiting on your share for ${description}`,
+  MEMBER_HEADING: 'You have a bill to settle',
+  MEMBER_BODY: (payerName: string, description: string, amount: string) =>
+    `${payerName} paid for ${description}. Your share is ${amount}. Please settle up when you get a chance.`,
+  FOOTER: (household: string) => `Sent on behalf of ${household}.`,
 } as const
