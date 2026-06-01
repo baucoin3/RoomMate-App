@@ -8,7 +8,7 @@ import {
   RECEIPT_CATEGORY_NONE,
   RECEIPT_CATEGORY_WITH_OPTIONS,
 } from '@/lib/config'
-import { upsertAliasesBatch } from '@/lib/services/householdItems'
+import { resolveNewHouseholdItemsForReceipt, upsertAliasesBatch } from '@/lib/services/householdItems'
 import { RECEIPTS } from '@/locales/en'
 import type { ReceiptAnalysis, ReceiptDetail, ReceiptLedgerItem, SaveReceiptPayload } from '@/lib/types/receipts'
 
@@ -92,26 +92,20 @@ export async function saveReceipt(
     return { data: null, error: RECEIPTS.ERRORS.PAYER_REQUIRED }
   }
 
-  if (payload.new_household_items && payload.new_household_items.length > 0) {
-    const itemRows = payload.new_household_items.map((item) => ({
-      household_id: payload.household_id,
-      name: item.name,
-      default_category_id: item.default_category_id,
-      split_overrides: item.split_overrides ?? null,
-    }))
-    const { data: insertedItems, error: itemError } = await supabase
-      .from('household_items')
-      .insert(itemRows)
-      .select('id, name')
-    if (itemError) return { data: null, error: itemError.message }
+  if (payload.new_household_items?.length) {
+    const { data: resolved, error: itemError } = await resolveNewHouseholdItemsForReceipt(
+      supabase,
+      payload.household_id,
+      payload.new_household_items,
+    )
+    if (itemError) return { data: null, error: itemError }
 
-    const aliasesToInsert = (insertedItems ?? []).flatMap((insertedItem, i) => {
-      const original = payload.new_household_items![i]
-      return (original.initial_aliases ?? []).map((alias) => ({
-        household_item_id: insertedItem.id as string,
-        display_text: alias,
-      }))
-    })
+    const aliasesToInsert = (resolved ?? []).flatMap((item) =>
+      item.initial_aliases.map((display_text) => ({
+        household_item_id: item.id,
+        display_text,
+      })),
+    )
     if (aliasesToInsert.length > 0) {
       const { error: aliasError } = await upsertAliasesBatch(supabase, payload.household_id, aliasesToInsert)
       if (aliasError) {

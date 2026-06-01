@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { normalizeReceiptText } from '@/lib/utils/itemMatching'
+import type { NewHouseholdItemInput } from '@/lib/types/receipts'
 import type { HouseholdItem, HouseholdItemAlias } from '@/lib/types/householdItems'
+import { dedupeNewHouseholdItems } from '@/lib/utils/householdItemDedup'
+import { normalizeReceiptText } from '@/lib/utils/itemMatching'
 
 type ItemRow = {
   id: string
@@ -91,6 +93,101 @@ export async function getItemGroupsForHouseholdItems(
     }, [])
 
   return { data: groups.sort(), error: null }
+}
+
+type HouseholdItemIdNameRow = { id: string; name: string }
+
+function buildExistingByNormalizedName(
+  rows: HouseholdItemIdNameRow[],
+): Map<string, HouseholdItemIdNameRow> {
+  return rows.reduce<Map<string, HouseholdItemIdNameRow>>((acc, row) => {
+    const key = normalizeReceiptText(row.name)
+    if (key && !acc.has(key)) acc.set(key, row)
+    return acc
+  }, new Map())
+}
+
+async function fetchHouseholdItemIdNames(
+  supabase: SupabaseClient,
+  householdId: string,
+): Promise<{ data: HouseholdItemIdNameRow[] | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from('household_items')
+    .select('id, name')
+    .eq('household_id', householdId)
+
+  if (error) return { data: null, error: error.message }
+  return { data: (data ?? []) as HouseholdItemIdNameRow[], error: null }
+}
+
+function isUniqueViolation(errorMessage: string): boolean {
+  return errorMessage.includes('household_items_household_id_name_key') || errorMessage.includes('duplicate key')
+}
+
+export async function resolveNewHouseholdItemsForReceipt(
+  supabase: SupabaseClient,
+  householdId: string,
+  items: NewHouseholdItemInput[],
+): Promise<{
+  data: Array<{ id: string; normalizedName: string; name: string; initial_aliases: string[] }> | null
+  error: string | null
+}> {
+  const deduped = dedupeNewHouseholdItems(items)
+  if (deduped.length === 0) return { data: [], error: null }
+
+  const { data: existingRows, error: fetchError } = await fetchHouseholdItemIdNames(supabase, householdId)
+  if (fetchError) return { data: null, error: fetchError }
+
+  let existingByNormalized = buildExistingByNormalizedName(existingRows ?? [])
+
+  const toInsert = deduped
+    .filter((item) => !existingByNormalized.has(item.normalizedName))
+    .map((item) => ({
+      household_id: householdId,
+      name: item.name.trim(),
+      default_category_id: item.default_category_id,
+      split_overrides: item.split_overrides ?? null,
+      item_group: item.item_group,
+    }))
+
+  let insertedRows: HouseholdItemIdNameRow[] = []
+
+  if (toInsert.length > 0) {
+    const { data: inserted, error: insertError } = await supabase
+      .from('household_items')
+      .insert(toInsert)
+      .select('id, name')
+
+    if (insertError) {
+      // Race: another request may have inserted the same name between select and insert.
+      if (isUniqueViolation(insertError.message)) {
+        const { data: refetched, error: refetchError } = await fetchHouseholdItemIdNames(supabase, householdId)
+        if (refetchError) return { data: null, error: refetchError }
+        existingByNormalized = buildExistingByNormalizedName(refetched ?? [])
+      } else {
+        return { data: null, error: insertError.message }
+      }
+    } else {
+      insertedRows = (inserted ?? []) as HouseholdItemIdNameRow[]
+      insertedRows.forEach((row) => {
+        const key = normalizeReceiptText(row.name)
+        if (key) existingByNormalized.set(key, row)
+      })
+    }
+  }
+
+  const resolved = deduped.flatMap((item) => {
+    const match = existingByNormalized.get(item.normalizedName)
+    if (!match) return []
+    return [{
+      id: match.id,
+      normalizedName: item.normalizedName,
+      name: match.name,
+      initial_aliases: item.initial_aliases,
+    }]
+  })
+
+  return { data: resolved, error: null }
 }
 
 export async function createHouseholdItem(

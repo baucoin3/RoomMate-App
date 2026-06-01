@@ -74,6 +74,7 @@ export async function getRecurringExpensesForHousehold(
       due_day_of_month,
       alert_days_before,
       is_active,
+      color,
       payer:household_members!paid_by_member_id ( id, nickname ),
       category:expense_categories ( name ),
       splits:recurring_expense_splits (
@@ -100,6 +101,7 @@ export async function getRecurringExpensesForHousehold(
     due_day_of_month: number
     alert_days_before: number
     is_active: boolean
+    color: string | null
     payer: { id: string; nickname: string } | null
     category: { name: string } | null
     splits: {
@@ -124,6 +126,7 @@ export async function getRecurringExpensesForHousehold(
     due_day_of_month: r.due_day_of_month,
     alert_days_before: r.alert_days_before,
     is_active: r.is_active,
+    color: r.color ?? '#ef4444',
     splits: r.splits.map((s) => ({
       id: s.id,
       recurring_expense_id: s.recurring_expense_id,
@@ -461,6 +464,7 @@ export async function getRecurringBillsOverview(
       due_day_of_month,
       alert_days_before,
       is_active,
+      color,
       payer:household_members!paid_by_member_id ( id, nickname ),
       category:expense_categories ( name ),
       splits:recurring_expense_splits (
@@ -488,6 +492,7 @@ export async function getRecurringBillsOverview(
     due_day_of_month: number
     alert_days_before: number
     is_active: boolean
+    color: string | null
     payer: { id: string; nickname: string } | null
     category: { name: string } | null
     splits: {

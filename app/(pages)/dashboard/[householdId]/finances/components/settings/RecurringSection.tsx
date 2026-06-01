@@ -90,6 +90,7 @@ function RecurringCard({ expense, householdId, members, onUpdated, onDeleted }: 
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: expense.color ?? '#ef4444' }} />
             <span className="text-sm font-semibold text-white">{expense.description}</span>
             <button
               type="button"
@@ -154,6 +155,11 @@ interface AddRecurringFormProps {
   onCancel: () => void
 }
 
+const COLOR_PRESETS = [
+  '#ef4444', '#f97316', '#eab308', '#22c55e',
+  '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280',
+] as const
+
 function RecurringForm({ householdId, members, initialExpense, onSaved, onCancel }: AddRecurringFormProps) {
   const isEditing = Boolean(initialExpense)
   const [description, setDescription] = useState(initialExpense?.description ?? '')
@@ -161,6 +167,7 @@ function RecurringForm({ householdId, members, initialExpense, onSaved, onCancel
   const [payerId, setPayerId] = useState(initialExpense?.paid_by_member_id ?? members[0]?.id ?? '')
   const [dueDay, setDueDay] = useState(() => initialExpense ? String(initialExpense.due_day_of_month) : getCurrentDueDay())
   const [alertDays, setAlertDays] = useState(initialExpense ? String(initialExpense.alert_days_before) : '3')
+  const [color, setColor] = useState(initialExpense?.color ?? '#ef4444')
   const [splits, setSplits] = useState<SplitValue[]>(() =>
     initialExpense ? buildSplitsFromExpense(initialExpense, members) : (buildDefaultSplits(members) as SplitValue[]),
   )
@@ -204,6 +211,7 @@ function RecurringForm({ householdId, members, initialExpense, onSaved, onCancel
         alert_days_before: alertDaysNum,
         splits: splitsWithAmounts,
         household_id: householdId,
+        color,
       }
 
       const res = initialExpense
@@ -232,6 +240,7 @@ function RecurringForm({ householdId, members, initialExpense, onSaved, onCancel
         due_day_of_month: dueDayNum,
         alert_days_before: alertDaysNum,
         is_active: initialExpense?.is_active ?? true,
+        color,
         splits: updatedSplits,
       }
       onSaved(savedExpense)
@@ -303,6 +312,30 @@ function RecurringForm({ householdId, members, initialExpense, onSaved, onCancel
         </div>
       </div>
       <p className="text-xs text-white/30 -mt-1">{FINANCES.SETTINGS.DUE_DATE_HINT}</p>
+
+      {/* Color picker */}
+      <div>
+        <label className="text-xs text-white/40 mb-2 block">{FINANCES.SETTINGS.COLOR_LABEL}</label>
+        <div className="flex flex-wrap items-center gap-2">
+          {COLOR_PRESETS.map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => setColor(preset)}
+              className={`w-7 h-7 rounded-full border-2 transition-all ${color === preset ? 'ring-2 ring-white ring-offset-1 ring-offset-[#1c1c24] border-transparent scale-110' : 'border-transparent opacity-70 hover:opacity-100'}`}
+              style={{ backgroundColor: preset }}
+              aria-label={preset}
+            />
+          ))}
+          <input
+            type="color"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+            className="w-7 h-7 rounded-full cursor-pointer border border-white/20 bg-transparent p-0.5"
+            title="Custom color"
+          />
+        </div>
+      </div>
 
       <SplitEditor
         members={members}

@@ -19,6 +19,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       alert_days_before,
       is_active,
       splits,
+      color,
     } = body as {
       description?: string
       amount?: number
@@ -28,6 +29,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       alert_days_before?: number
       is_active?: boolean
       splits?: { household_member_id: string; percentage: number; amount: number }[]
+      color?: string
     }
 
     if (amount !== undefined && Number(amount) <= 0) {
@@ -78,6 +80,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     if (due_day_of_month !== undefined) updates.due_day_of_month = due_day_of_month
     if (alert_days_before !== undefined) updates.alert_days_before = alert_days_before
     if (is_active !== undefined) updates.is_active = is_active
+    if (color !== undefined && /^#[0-9a-fA-F]{6}$/.test(color)) updates.color = color
 
     const { data, error } = await supabase
       .from('recurring_expenses')

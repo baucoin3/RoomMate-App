@@ -25,8 +25,26 @@ export interface GetStartedStatus {
   hasMultipleMembers: boolean
 }
 
+export interface CalendarMealLog {
+  date: string
+  recipe_name: string
+  made_by_name: string
+}
+
+export interface CalendarBillDot {
+  due_day: number
+  description: string
+  color: string
+}
+
+export interface CalendarData {
+  meal_logs: CalendarMealLog[]
+  bill_dots: CalendarBillDot[]
+}
+
 export interface DashboardData {
   getStarted: GetStartedStatus
   recurringAlerts: RecurringBillAlert[]
   recentActivity: ActivityItem[]
+  calendar: CalendarData
 }

@@ -249,7 +249,7 @@ export const FINANCES = {
     LOGGED_THIS_CYCLE: 'Logged this cycle',
     NO_RECURRING_BILLS: 'No recurring bills set up yet.',
     GO_TO_SETTINGS: 'Set up in Settings',
-    MEMBER_HAS_PAID: (name: string) => `${name} has paid`,
+    MEMBER_HAS_PAID: (name: string) => `${name} Pays this Expense`,
     YOU_HAVE_PAID: 'You have paid',
     THIRD_PARTY_OWES: (name: string, payer: string, amount: string) => `${name} owes ${payer} $${amount}`,
   },
@@ -288,6 +288,7 @@ export const FINANCES = {
     ACTIVE_TOGGLE: 'Active',
     INACTIVE_BADGE: 'Inactive',
     ACTIVE_BADGE: 'Active',
+    COLOR_LABEL: 'Calendar color',
   },
   SPLIT_EDITOR: {
     EQUAL_SPLIT: 'Equal split',
@@ -670,6 +671,19 @@ export const GUESTS = {
   EMPTY_GROUPS_CTA: 'Create a group to bundle recurring guests together.',
 } as const
 
+export const MEAL_LOGS = {
+  MARK_MADE_TODAY: 'Made This Today',
+  MARKING: 'Logging…',
+  DONE: 'Logged!',
+  ERROR: 'Could not log meal. Try again.',
+  RECENT_HEADING: 'Recently made',
+  LAST_MADE: (name: string, daysAgo: number) =>
+    daysAgo === 0 ? `${name} made this today` : `${name} made this ${daysAgo}d ago`,
+  NO_LOGS: 'Not made yet',
+  MENU_EDIT: 'Edit',
+  MENU_MARK_MADE: 'Mark as Made Today',
+} as const
+
 export const HOUSEHOLD_DASHBOARD = {
   QUICK_ACTIONS: {
     SCAN: 'Scan Receipt',
@@ -699,6 +713,16 @@ export const HOUSEHOLD_DASHBOARD = {
     TITLE: 'Recent Activity',
     EMPTY: 'No activity yet.',
     TIME_AGO: (label: string) => `${label} ago`,
+  },
+  CALENDAR: {
+    TITLE: 'This Month',
+    PREV: 'Previous month',
+    NEXT: 'Next month',
+    DAYS: ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const,
+    BILL_DUE: (name: string) => `${name} — due`,
+    RECIPE_MADE: (person: string, recipe: string) => `${person} made ${recipe}`,
+    MORE_EVENTS: (n: number) => `+${n} more`,
+    LOADING: 'Loading…',
   },
   ERRORS: {
     LOAD: 'Failed to load dashboard data.',
