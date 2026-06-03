@@ -200,7 +200,6 @@ Reusable item catalog for a household — acts as a product/item master list. It
 | `household_id` | uuid | NO | — | FK → `households.id` |
 | `name` | text | NO | — | Item name (canonical) |
 | `default_category_id` | uuid | YES | — | FK → `expense_categories.id` |
-| `item_group` | text | YES | — | e.g. "produce", "snacks" |
 | `split_overrides` | jsonb | YES | — | `[{ "member_id": uuid, "percentage": number }]` |
 | `image_url` | text | YES | — | URL to item image (Supabase Storage) |
 | `created_at` | timestamptz | NO | `now()` | — |

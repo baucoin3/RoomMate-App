@@ -46,7 +46,7 @@ interface SplitsStepProps {
   onGuestCreated: (guest: HouseholdGuest) => void
   onConfirmLineItem: (index: number) => void
   onAddAllToExpense: () => void
-  onOpenModal: () => void
+  onOpenModal: (index?: number) => void
   onBack: () => void
   onSave: () => void
 }
@@ -208,6 +208,16 @@ export default function SplitsStep({
                         ))}
                       </div>
                     )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onOpenModal(i)
+                      }}
+                      className="mt-1 text-[11px] px-2 py-0.5 rounded-md border border-white/10 text-white/40 hover:text-white/70 hover:border-white/25 transition-colors"
+                    >
+                      {RECEIPTS.ACTIONS.CONFIGURE_ITEM}
+                    </button>
                   </div>
                 </div>
               )
@@ -219,7 +229,7 @@ export default function SplitsStep({
       {lineItemConfigs.length > 0 && (
         <button
           type="button"
-          onClick={onOpenModal}
+          onClick={() => onOpenModal()}
           className="w-full py-3 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 bg-indigo-500/10 border border-indigo-400/25 text-indigo-200 hover:bg-indigo-500/15 hover:border-indigo-400/35 hover:text-indigo-100"
         >
           {RECEIPTS.ACTIONS.CONFIGURE_ITEMS}

@@ -2,6 +2,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { RECIPES } from '@/locales/en'
 import { ROUTES } from '@/lib/constants/routes'
+import { ClockIcon, RECIPE_IMAGE_PLACEHOLDERS, UserGroupIcon } from '@/components/icons'
 import RecipeCardMenu from '@/components/recipes/RecipeCardMenu'
 
 interface RecipeCardProps {
@@ -14,15 +15,6 @@ interface RecipeCardProps {
   cookTimeLabel: string | null
 }
 
-// Deterministic placeholder palette cycled by id.charCodeAt(0) % 5
-const PLACEHOLDERS = [
-  { bg: 'from-[#FAC775] to-[#EF9F27]', icon: 'ti-bread' },
-  { bg: 'from-[#C0DD97] to-[#5DCAA5]', icon: 'ti-salad' },
-  { bg: 'from-[#F5C4B3] to-[#F0997B]', icon: 'ti-meat' },
-  { bg: 'from-[#CECBF6] to-[#AFA9EC]', icon: 'ti-cookie' },
-  { bg: 'from-[#B5D4F4] to-[#85B7EB]', icon: 'ti-fish' },
-] as const
-
 export default function RecipeCard({
   id,
   householdId,
@@ -32,7 +24,8 @@ export default function RecipeCard({
   category_tag,
   cookTimeLabel,
 }: RecipeCardProps) {
-  const placeholder = PLACEHOLDERS[id.charCodeAt(0) % 5]
+  const placeholder = RECIPE_IMAGE_PLACEHOLDERS[id.charCodeAt(0) % 5]
+  const PlaceholderIcon = placeholder.Icon
 
   return (
     <div className="relative group rounded-xl border border-[--color-border-secondary] bg-[--color-background-card] hover:border-[--color-border-primary] transition-colors">
@@ -50,7 +43,7 @@ export default function RecipeCard({
             <div
               className={`w-full h-full bg-gradient-to-br ${placeholder.bg} flex items-center justify-center`}
             >
-              <i className={`${placeholder.icon} text-4xl text-white`} />
+              <PlaceholderIcon className="h-10 w-10 text-white" />
             </div>
           )}
 
@@ -88,11 +81,11 @@ export default function RecipeCard({
           {/* Meta row */}
           <div className="flex gap-2.5 text-[12px] text-[--color-text-tertiary] mt-2">
             <span className="flex items-center gap-1">
-              <i className="ti-clock text-[11px]" />
+              <ClockIcon className="h-[11px] w-[11px]" />
               {cookTimeLabel ?? RECIPES.NO_TIME}
             </span>
             <span className="flex items-center gap-1">
-              <i className="ti-users text-[11px]" />
+              <UserGroupIcon className="h-[11px] w-[11px]" />
               {RECIPES.NO_TIME}
             </span>
           </div>

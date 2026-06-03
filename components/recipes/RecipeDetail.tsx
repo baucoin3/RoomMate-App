@@ -8,15 +8,15 @@ import { RECIPES, MEAL_LOGS } from '@/locales/en'
 import { ROUTES } from '@/lib/constants/routes'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import type { RecipeDetail as RecipeDetailType, MealLog } from '@/lib/types/recipe'
-
-
-const PLACEHOLDERS = [
-  { bg: 'from-[#FAC775] to-[#EF9F27]', icon: 'ti-bread' },
-  { bg: 'from-[#C0DD97] to-[#5DCAA5]', icon: 'ti-salad' },
-  { bg: 'from-[#F5C4B3] to-[#F0997B]', icon: 'ti-meat' },
-  { bg: 'from-[#CECBF6] to-[#AFA9EC]', icon: 'ti-cookie' },
-  { bg: 'from-[#B5D4F4] to-[#85B7EB]', icon: 'ti-fish' },
-] as const
+import {
+  CheckIcon,
+  MealMadeIcon,
+  PencilSquareIcon,
+  RECIPE_IMAGE_PLACEHOLDERS,
+  TrashIcon,
+  UserIcon,
+  XMarkIcon,
+} from '@/components/icons'
 
 function OrnamentalDivider() {
   return (
@@ -76,7 +76,8 @@ export default function RecipeDetail({ recipe, householdId, initialMealLogs = []
   const visibleIngredients = recipe.recipe_ingredients.filter((i) => !excludedIngredients.has(i.id))
   const visibleSteps = recipe.recipe_steps.filter((s) => !excludedSteps.has(s.id))
 
-  const placeholder = PLACEHOLDERS[recipe.id.charCodeAt(0) % 5]
+  const placeholder = RECIPE_IMAGE_PLACEHOLDERS[recipe.id.charCodeAt(0) % 5]
+  const PlaceholderIcon = placeholder.Icon
 
   async function handleDelete() {
     if (deleteState === 'idle') {
@@ -121,7 +122,7 @@ export default function RecipeDetail({ recipe, householdId, initialMealLogs = []
           <div
             className={`w-full h-full bg-gradient-to-br ${placeholder.bg} flex items-center justify-center`}
           >
-            <i className={`${placeholder.icon} text-5xl text-white/70`} />
+            <PlaceholderIcon className="h-12 w-12 text-white/70" />
           </div>
         )}
 
@@ -145,7 +146,7 @@ export default function RecipeDetail({ recipe, householdId, initialMealLogs = []
             className="flex items-center gap-2 text-xl font-semibold text-amber-400 mt-2 tracking-wide"
             style={{ fontFamily: "'Caveat', cursive" }}
           >
-            <i className="ti-user text-[18px] text-amber-400/80" aria-hidden />
+            <UserIcon className="h-[18px] w-[18px] text-amber-400/80" />
             {RECIPES.BY_AUTHOR(recipe.created_by_name)}
           </p>
         </div>
@@ -162,7 +163,11 @@ export default function RecipeDetail({ recipe, householdId, initialMealLogs = []
                   : 'border-amber-500/30 text-amber-400 hover:bg-amber-500/10'
             }`}
           >
-            <i className={`text-[15px] ${logState === 'done' ? 'ti-check' : 'ti-chef-hat'}`} />
+            {logState === 'done' ? (
+              <CheckIcon className="h-[15px] w-[15px]" />
+            ) : (
+              <MealMadeIcon className="h-[15px] w-[15px]" />
+            )}
             {logState === 'logging'
               ? MEAL_LOGS.MARKING
               : logState === 'done'
@@ -176,7 +181,7 @@ export default function RecipeDetail({ recipe, householdId, initialMealLogs = []
             onClick={() => router.push(ROUTES.RECIPE_EDIT(householdId, recipe.id))}
             className="flex items-center gap-1.5 px-3.5 py-2 text-base rounded-md border border-[--color-border-secondary] text-[--color-text-secondary] hover:border-[--color-border-primary] hover:text-[--color-text-primary] transition-colors"
           >
-            <i className="ti-edit text-[15px]" />
+            <PencilSquareIcon className="h-[15px] w-[15px]" />
             {RECIPES.DETAIL.EDIT}
           </button>
 
@@ -185,7 +190,7 @@ export default function RecipeDetail({ recipe, householdId, initialMealLogs = []
             disabled={deleteState === 'deleting'}
             className="flex items-center gap-1.5 px-3.5 py-2 text-base rounded-md border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
           >
-            {deleteState === 'idle' && <i className="ti-trash text-[15px]" />}
+            {deleteState === 'idle' && <TrashIcon className="h-[15px] w-[15px]" />}
             {deleteLabel}
           </button>
         </div>
@@ -209,7 +214,7 @@ export default function RecipeDetail({ recipe, householdId, initialMealLogs = []
                 key={log.id}
                 className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] bg-[#5DCAA5]/10 border border-[#5DCAA5]/20 text-[#5DCAA5]"
               >
-                <i className="ti-chef-hat text-[11px]" />
+                <MealMadeIcon className="h-[11px] w-[11px]" />
                 {MEAL_LOGS.LAST_MADE(log.made_by_name, daysAgo)}
               </span>
             )
@@ -270,7 +275,7 @@ export default function RecipeDetail({ recipe, householdId, initialMealLogs = []
                   className="opacity-0 group-hover:opacity-100 text-[--color-text-tertiary] hover:text-red-400 transition-all ml-1 flex-shrink-0"
                   aria-label={RECIPES.DETAIL.INGREDIENT_EXCLUDE_LABEL}
                 >
-                  <i className="ti-x text-[11px]" />
+                  <XMarkIcon className="h-[11px] w-[11px]" />
                 </button>
               </div>
             ))}
@@ -318,7 +323,7 @@ export default function RecipeDetail({ recipe, householdId, initialMealLogs = []
                   className="opacity-0 group-hover:opacity-100 text-[--color-text-tertiary] hover:text-red-400 transition-all flex-shrink-0 mt-1"
                   aria-label={RECIPES.DETAIL.STEP_EXCLUDE_LABEL}
                 >
-                  <i className="ti-x text-[11px]" />
+                  <XMarkIcon className="h-[11px] w-[11px]" />
                 </button>
               </div>
             ))}

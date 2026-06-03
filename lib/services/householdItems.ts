@@ -2,6 +2,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { NewHouseholdItemInput } from '@/lib/types/receipts'
 import type { HouseholdItem, HouseholdItemAlias } from '@/lib/types/householdItems'
 import { dedupeNewHouseholdItems } from '@/lib/utils/householdItemDedup'
+import {
+  dedupeAliasRowsInBatch,
+  filterAliasesAlreadyLinked,
+} from '@/lib/utils/aliasDedup'
 import { normalizeReceiptText } from '@/lib/utils/itemMatching'
 
 type ItemRow = {
@@ -9,7 +13,6 @@ type ItemRow = {
   household_id: string
   name: string
   default_category_id: string | null
-  item_group: string | null
   split_overrides: { member_id: string; percentage: number }[] | null
   image_url: string | null
   created_at: string
@@ -28,7 +31,6 @@ function mapItemRow(row: ItemRow): HouseholdItem {
     household_id: row.household_id,
     name: row.name,
     default_category_id: row.default_category_id,
-    item_group: row.item_group,
     split_overrides: row.split_overrides,
     image_url: row.image_url,
     category_name: row.category?.name,
@@ -41,7 +43,6 @@ const ITEM_SELECT = `
   household_id,
   name,
   default_category_id,
-  item_group,
   split_overrides,
   image_url,
   created_at,
@@ -68,31 +69,6 @@ export async function getHouseholdItemsForHousehold(
   if (error) return { data: null, error: error.message }
 
   return { data: (data as unknown as ItemRow[]).map(mapItemRow), error: null }
-}
-
-export async function getItemGroupsForHouseholdItems(
-  supabase: SupabaseClient,
-  householdId: string,
-): Promise<{ data: string[] | null; error: string | null }> {
-  const { data, error } = await supabase
-    .from('household_items')
-    .select('item_group')
-    .eq('household_id', householdId)
-    .not('item_group', 'is', null)
-
-  if (error) return { data: null, error: error.message }
-
-  const seen = new Set<string>()
-  const groups = ((data ?? []) as { item_group: string | null }[])
-    .reduce<string[]>((acc, row) => {
-      if (row.item_group && !seen.has(row.item_group)) {
-        seen.add(row.item_group)
-        acc.push(row.item_group)
-      }
-      return acc
-    }, [])
-
-  return { data: groups.sort(), error: null }
 }
 
 type HouseholdItemIdNameRow = { id: string; name: string }
@@ -147,7 +123,6 @@ export async function resolveNewHouseholdItemsForReceipt(
       name: item.name.trim(),
       default_category_id: item.default_category_id,
       split_overrides: item.split_overrides ?? null,
-      item_group: item.item_group,
     }))
 
   let insertedRows: HouseholdItemIdNameRow[] = []
@@ -196,7 +171,6 @@ export async function createHouseholdItem(
     household_id: string
     name: string
     default_category_id?: string | null
-    item_group?: string | null
     split_overrides?: { member_id: string; percentage: number }[] | null
   },
 ): Promise<{ data: HouseholdItem | null; error: string | null }> {
@@ -206,7 +180,6 @@ export async function createHouseholdItem(
       household_id: payload.household_id,
       name: payload.name.trim(),
       default_category_id: payload.default_category_id ?? null,
-      item_group: payload.item_group ?? null,
       split_overrides: payload.split_overrides ?? null,
     })
     .select(ITEM_SELECT)
@@ -222,14 +195,12 @@ export async function updateHouseholdItem(
   updates: {
     name?: string
     default_category_id?: string | null
-    item_group?: string | null
     split_overrides?: { member_id: string; percentage: number }[] | null
   },
 ): Promise<{ data: HouseholdItem | null; error: string | null }> {
   const patch: Record<string, unknown> = {}
   if (updates.name !== undefined) patch.name = updates.name.trim()
   if (updates.default_category_id !== undefined) patch.default_category_id = updates.default_category_id
-  if (updates.item_group !== undefined) patch.item_group = updates.item_group
   if (updates.split_overrides !== undefined) patch.split_overrides = updates.split_overrides
 
   const { data, error } = await supabase
@@ -287,22 +258,24 @@ export async function upsertAliasesBatch(
   householdId: string,
   aliases: Array<{ household_item_id: string; display_text: string }>,
 ): Promise<{ error: string | null }> {
-  if (aliases.length === 0) return { error: null }
+  const deduped = dedupeAliasRowsInBatch(householdId, aliases)
+  if (deduped.length === 0) return { error: null }
 
-  const rows = aliases
-    .map((a) => ({
-      household_id: householdId,
-      household_item_id: a.household_item_id,
-      alias_text: normalizeReceiptText(a.display_text),
-      display_text: a.display_text,
-    }))
-    .filter((a) => a.alias_text.length > 0)
+  const keys = deduped.map((r) => r.alias_text)
+  const { data: existing, error: fetchError } = await supabase
+    .from('household_item_aliases')
+    .select('alias_text, household_item_id')
+    .eq('household_id', householdId)
+    .in('alias_text', keys)
 
-  if (rows.length === 0) return { error: null }
+  if (fetchError) return { error: fetchError.message }
+
+  const toUpsert = filterAliasesAlreadyLinked(deduped, existing ?? [])
+  if (toUpsert.length === 0) return { error: null }
 
   const { error } = await supabase
     .from('household_item_aliases')
-    .upsert(rows, { onConflict: 'household_id,alias_text' })
+    .upsert(toUpsert, { onConflict: 'household_id,alias_text' })
 
   return { error: error?.message ?? null }
 }

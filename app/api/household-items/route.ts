@@ -48,10 +48,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body: unknown = await request.json()
-    const { name, default_category_id, item_group, split_overrides, household_id } = body as {
+    const { name, default_category_id, split_overrides, household_id } = body as {
       name?: string
       default_category_id?: string | null
-      item_group?: string | null
       split_overrides?: { member_id: string; percentage: number }[] | null
       household_id?: string
     }
@@ -85,7 +84,6 @@ export async function POST(request: Request) {
       household_id,
       name: name.trim(),
       default_category_id: default_category_id ?? null,
-      item_group: item_group ?? null,
       split_overrides: split_overrides ?? null,
     })
 

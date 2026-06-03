@@ -9,16 +9,6 @@ export interface ActivityItem {
   createdAt: string
 }
 
-export interface RecurringBillAlert {
-  id: string
-  description: string
-  totalAmount: number
-  dueDayOfMonth: number
-  /** Negative means overdue */
-  daysUntilDue: number
-  cycleDueDate: string
-}
-
 export interface GetStartedStatus {
   hasHouseholdName: boolean
   hasRecurringBills: boolean
@@ -37,14 +27,19 @@ export interface CalendarBillDot {
   color: string
 }
 
+export interface CalendarReceiptDot {
+  date: string
+  merchant_name: string | null
+}
+
 export interface CalendarData {
   meal_logs: CalendarMealLog[]
   bill_dots: CalendarBillDot[]
+  receipt_dots: CalendarReceiptDot[]
 }
 
 export interface DashboardData {
   getStarted: GetStartedStatus
-  recurringAlerts: RecurringBillAlert[]
   recentActivity: ActivityItem[]
   calendar: CalendarData
 }

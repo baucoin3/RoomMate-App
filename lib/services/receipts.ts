@@ -92,6 +92,13 @@ export async function saveReceipt(
     return { data: null, error: RECEIPTS.ERRORS.PAYER_REQUIRED }
   }
 
+  let resolvedNewItems: Array<{
+    id: string
+    normalizedName: string
+    name: string
+    initial_aliases: string[]
+  }> = []
+
   if (payload.new_household_items?.length) {
     const { data: resolved, error: itemError } = await resolveNewHouseholdItemsForReceipt(
       supabase,
@@ -99,18 +106,27 @@ export async function saveReceipt(
       payload.new_household_items,
     )
     if (itemError) return { data: null, error: itemError }
+    resolvedNewItems = resolved ?? []
+  }
 
-    const aliasesToInsert = (resolved ?? []).flatMap((item) =>
+  const allAliasInputs = [
+    ...resolvedNewItems.flatMap((item) =>
       item.initial_aliases.map((display_text) => ({
         household_item_id: item.id,
         display_text,
       })),
+    ),
+    ...(payload.alias_inserts ?? []),
+  ]
+
+  if (allAliasInputs.length > 0) {
+    const { error: aliasError } = await upsertAliasesBatch(
+      supabase,
+      payload.household_id,
+      allAliasInputs,
     )
-    if (aliasesToInsert.length > 0) {
-      const { error: aliasError } = await upsertAliasesBatch(supabase, payload.household_id, aliasesToInsert)
-      if (aliasError) {
-        console.error('[saveReceipt] initial alias insert failed', aliasError)
-      }
+    if (aliasError) {
+      console.error('[saveReceipt] alias upsert failed', aliasError)
     }
   }
 
@@ -173,17 +189,6 @@ export async function saveReceipt(
 
     const { error: splitError } = await supabase.from('expense_splits').insert(splitRows)
     if (splitError) return { data: null, error: splitError.message }
-  }
-
-  if (payload.alias_inserts && payload.alias_inserts.length > 0) {
-    const { error: aliasError } = await upsertAliasesBatch(
-      supabase,
-      payload.household_id,
-      payload.alias_inserts,
-    )
-    if (aliasError) {
-      console.error('[saveReceipt] alias upsert failed', aliasError)
-    }
   }
 
   return { data: { receipt_id: receiptRow.id, expense_id: expenseRow.id }, error: null }

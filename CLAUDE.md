@@ -155,7 +155,32 @@ const res = await apiClient.get<{ households: Household[] }>('/api/households')
 
 ---
 
-## 7. React / Next.js Components
+## 7. Icons — Inline SVG Only (No Tabler, No Icon Fonts)
+
+**Do not use Tabler Icons** (`ti-*` classes, `@tabler/icons-webfont`, or Tabler CDN stylesheets). They are not loaded in this project and will render as empty elements.
+
+Use **inline Heroicons-style SVG components** instead:
+
+| Need | Where to get it |
+|------|-----------------|
+| Common UI icons (chevrons, plus, trash, search, etc.) | Import from `@/components/icons` |
+| Nav sidebar icons | `lib/config/nav.tsx` (household shell only) |
+| One-off icon used in a single file | Small local `function FooIcon({ className })` with an `<svg>` — same pattern as nav |
+
+```tsx
+// ❌ BAD — Tabler class with no font loaded
+<i className="ti-plus text-sm" />
+
+// ✅ GOOD — shared SVG component
+import { PlusIcon } from '@/components/icons'
+<PlusIcon className="h-4 w-4" />
+```
+
+When adding a new shared icon, add it to `components/icons/index.tsx` using `stroke="currentColor"`, `viewBox="0 0 24 24"`, and `aria-hidden` on the `<svg>`. Size with Tailwind `className` (`h-4 w-4`), not font-size.
+
+---
+
+## 8. React / Next.js Components
 
 - Default to Server Components. Add `'use client'` only when browser APIs, event handlers, or state are required.
 - Extract repeated `useState` + `useEffect` + `apiClient` patterns into custom hooks in `hooks/use*.ts`.
@@ -164,7 +189,7 @@ const res = await apiClient.get<{ households: Household[] }>('/api/households')
 
 ---
 
-## 8. API Route Structure
+## 9. API Route Structure
 
 ```
 1. Parse + validate input (return 400 early if invalid)
@@ -177,7 +202,7 @@ If a handler exceeds ~50 lines of logic, extract it into `lib/services/`.
 
 ---
 
-## 9. Database Schema
+## 10. Database Schema
 
 **Supabase Project ID:** `inbexkcbkoilfpuwctkx` — Full verbose schema lives in `.cursor/rules/database-schema.mdc`. Summary below.
 
@@ -212,13 +237,14 @@ If a handler exceeds ~50 lines of logic, extract it into `lib/services/`.
 
 ---
 
-## 10. Project Structure
+## 11. Project Structure
 
 ```
 app/
   (pages)/      — page components
   api/          — thin route handler controllers only
 components/     — shared UI components
+  icons/        — shared inline SVG icon components (Heroicons outline style)
 hooks/          — custom React hooks
 lib/
   api/          — axios client + helpers

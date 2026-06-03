@@ -73,6 +73,16 @@ export interface OweSummary {
   you_owe: OweItem[]
 }
 
+export interface SettledItem {
+  split_id: string
+  expense_id: string
+  description: string
+  date: string
+  amount: number
+  other_party: HouseholdMemberSummary
+  you_paid: boolean
+}
+
 export interface ActivitySplitRow {
   participant: SplitParticipant
   calculated_amount: number

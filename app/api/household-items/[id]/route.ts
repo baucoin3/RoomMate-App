@@ -11,10 +11,9 @@ interface RouteContext {
 export async function PATCH(request: Request, { params }: RouteContext) {
   try {
     const body: unknown = await request.json()
-    const { name, default_category_id, item_group, split_overrides } = body as {
+    const { name, default_category_id, split_overrides } = body as {
       name?: string
       default_category_id?: string | null
-      item_group?: string | null
       split_overrides?: { member_id: string; percentage: number }[] | null
     }
 
@@ -49,7 +48,6 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const { data, error } = await updateHouseholdItem(supabase, params.id, {
       name,
       default_category_id,
-      item_group,
       split_overrides,
     })
 

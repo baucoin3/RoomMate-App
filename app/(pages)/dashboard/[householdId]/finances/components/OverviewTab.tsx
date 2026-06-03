@@ -2,49 +2,34 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
-import type { OweSummary, ActivityItem, RecurringBillOverview } from '@/lib/types/finances'
+import type { OweSummary, ActivityItem, RecurringBillOverview, SettledItem } from '@/lib/types/finances'
 import { FINANCES } from '@/locales/en'
 import OwedToYouSection from './overview/OwedToYouSection'
 import YouOweSection from './overview/YouOweSection'
-import RecurringBillsSection from './overview/RecurringBillsSection'
+import SettledSection from './overview/SettledSection'
 import RecentActivity from './overview/RecentActivity'
 
 interface OverviewTabProps {
   householdId: string
 }
 
-type SectionHeaderVariant = 'default' | 'owed' | 'owe' | 'recurring'
-
 function SectionHeader({
   title,
   variant = 'default',
 }: {
   title: string
-  variant?: SectionHeaderVariant
+  variant?: 'default' | 'owed' | 'owe' | 'settled'
 }) {
-  if (variant === 'owed') {
-    return (
-      <h3 className="text-base font-bold text-green-400 tracking-tight">{title}</h3>
-    )
-  }
-  if (variant === 'owe') {
-    return (
-      <h3 className="text-base font-bold text-red-400 tracking-tight">{title}</h3>
-    )
-  }
-  if (variant === 'recurring') {
-    return (
-      <h3 className="text-base font-bold text-indigo-400 tracking-tight">{title}</h3>
-    )
-  }
-  return (
-    <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wide">{title}</h3>
-  )
+  if (variant === 'owed') return <h3 className="text-base font-bold text-green-400 tracking-tight">{title}</h3>
+  if (variant === 'owe') return <h3 className="text-base font-bold text-red-400 tracking-tight">{title}</h3>
+  if (variant === 'settled') return <h3 className="text-base font-bold text-white/60 tracking-tight">{title}</h3>
+  return <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wide">{title}</h3>
 }
 
 export default function OverviewTab({ householdId }: OverviewTabProps) {
   const [oweSummary, setOweSummary] = useState<OweSummary | null>(null)
   const [recurringBills, setRecurringBills] = useState<RecurringBillOverview[]>([])
+  const [settledItems, setSettledItems] = useState<SettledItem[]>([])
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -53,15 +38,17 @@ export default function OverviewTab({ householdId }: OverviewTabProps) {
     setLoading(true)
     setError('')
     try {
-      const [balancesRes, recurringRes, activityRes] = await Promise.all([
+      const [balancesRes, recurringRes, settledRes, activityRes] = await Promise.all([
         apiClient.get<{ data: OweSummary }>(`/api/finances/balances?householdId=${householdId}`),
         apiClient.get<{ data: RecurringBillOverview[] }>(
           `/api/finances/recurring/overview?householdId=${householdId}`,
         ),
+        apiClient.get<{ data: SettledItem[] }>(`/api/finances/settled?householdId=${householdId}`),
         apiClient.get<{ data: ActivityItem[] }>(`/api/finances/activity?householdId=${householdId}`),
       ])
       setOweSummary(balancesRes.data.data)
       setRecurringBills(recurringRes.data.data ?? [])
+      setSettledItems(settledRes.data.data ?? [])
       setActivity(activityRes.data.data ?? [])
     } catch (err) {
       setError(getErrorMessage(err))
@@ -97,30 +84,32 @@ export default function OverviewTab({ householdId }: OverviewTabProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Owed to You */}
+      {/* Owed to You — recurring bills pinned at top */}
       <div className="flex flex-col gap-3">
         <SectionHeader title={FINANCES.OVERVIEW.OWED_TO_YOU_TITLE} variant="owed" />
         <OwedToYouSection
           items={oweSummary?.owed_to_you ?? []}
+          recurringBills={recurringBills}
           householdId={householdId}
           onSettled={fetchAll}
         />
       </div>
 
-      {/* You Owe */}
+      {/* You Owe — recurring bills pinned at top */}
       <div className="flex flex-col gap-3">
         <SectionHeader title={FINANCES.OVERVIEW.YOU_OWE_TITLE} variant="owe" />
-        <YouOweSection items={oweSummary?.you_owe ?? []} />
-      </div>
-
-      {/* Recurring Bills */}
-      <div className="flex flex-col gap-3">
-        <SectionHeader title={FINANCES.OVERVIEW.RECURRING_BILLS_TITLE} variant="recurring" />
-        <RecurringBillsSection
-          bills={recurringBills}
+        <YouOweSection
+          items={oweSummary?.you_owe ?? []}
+          recurringBills={recurringBills}
           householdId={householdId}
           onChanged={fetchAll}
         />
+      </div>
+
+      {/* Settled history — replaces old Recurring Bills section */}
+      <div className="flex flex-col gap-3">
+        <SectionHeader title={FINANCES.OVERVIEW.SETTLED_HISTORY_TITLE} variant="settled" />
+        <SettledSection items={settledItems} />
       </div>
 
       {/* Recent Activity */}

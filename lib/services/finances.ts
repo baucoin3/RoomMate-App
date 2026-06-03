@@ -4,6 +4,7 @@ import type {
   RecurringExpense,
   OweSummary,
   OweItem,
+  SettledItem,
   ActivityItem,
   RecurringBillOverview,
   RecurringBillMemberStatus,
@@ -809,4 +810,99 @@ export async function settleRecurringMemberForCycle(
   }
 
   return { data: null, error: null }
+}
+
+// ─── Settled expenses history ──────────────────────────────────────────────
+
+export async function getSettledExpenses(
+  supabase: SupabaseClient,
+  householdId: string,
+  currentMemberId: string,
+  days = 30,
+): Promise<{ data: SettledItem[] | null; error: string | null }> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+  const cutoffStr = cutoff.toISOString().split('T')[0]
+
+  type MySettledRow = {
+    id: string
+    calculated_amount: number
+    expenses: {
+      id: string
+      description: string
+      date: string
+      paid_by_member_id: string
+      payer: { id: string; nickname: string } | null
+    } | null
+  }
+
+  type TheirSettledRow = {
+    id: string
+    description: string
+    date: string
+    expense_splits: {
+      id: string
+      calculated_amount: number
+      household_member_id: string
+      debtor: { id: string; nickname: string } | null
+    }[]
+  }
+
+  const [myResult, theirResult] = await Promise.all([
+    supabase
+      .from('expense_splits')
+      .select('id, calculated_amount, expenses!inner(id, description, date, paid_by_member_id, payer:household_members!paid_by_member_id(id, nickname))')
+      .eq('household_member_id', currentMemberId)
+      .eq('is_settled', true)
+      .eq('expenses.household_id', householdId)
+      .gte('expenses.date', cutoffStr)
+      .neq('expenses.paid_by_member_id', currentMemberId)
+      .limit(30),
+
+    supabase
+      .from('expenses')
+      .select('id, description, date, expense_splits!inner(id, calculated_amount, household_member_id, debtor:household_members!household_member_id(id, nickname))')
+      .eq('paid_by_member_id', currentMemberId)
+      .eq('household_id', householdId)
+      .gte('date', cutoffStr)
+      .eq('expense_splits.is_settled', true)
+      .not('expense_splits.household_member_id', 'is', null)
+      .neq('expense_splits.household_member_id', currentMemberId)
+      .order('date', { ascending: false })
+      .limit(30),
+  ])
+
+  if (myResult.error) return { data: null, error: myResult.error.message }
+  if (theirResult.error) return { data: null, error: theirResult.error.message }
+
+  const youPaid: SettledItem[] = ((myResult.data ?? []) as unknown as MySettledRow[])
+    .filter((r) => r.expenses?.payer != null)
+    .map((r) => ({
+      split_id: r.id,
+      expense_id: r.expenses!.id,
+      description: r.expenses!.description,
+      date: r.expenses!.date,
+      amount: Number(r.calculated_amount),
+      other_party: { id: r.expenses!.payer!.id, nickname: r.expenses!.payer!.nickname },
+      you_paid: true,
+    }))
+
+  const theyPaid: SettledItem[] = ((theirResult.data ?? []) as unknown as TheirSettledRow[])
+    .flatMap((e) =>
+      e.expense_splits
+        .filter((s) => s.debtor != null)
+        .map((s) => ({
+          split_id: s.id,
+          expense_id: e.id,
+          description: e.description,
+          date: e.date,
+          amount: Number(s.calculated_amount),
+          other_party: { id: s.debtor!.id, nickname: s.debtor!.nickname },
+          you_paid: false,
+        })),
+    )
+
+  const all = [...youPaid, ...theyPaid].sort((a, b) => b.date.localeCompare(a.date))
+
+  return { data: all, error: null }
 }

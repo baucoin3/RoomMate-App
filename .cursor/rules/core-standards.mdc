@@ -78,3 +78,19 @@ const res = await apiClient.get<{ households: Household[] }>('/api/households')
 ```
 
 `fetch()` must never appear in `app/(pages)/`, `components/`, or `hooks/` files. Any use of native `fetch()` for an internal route is a bug.
+
+## Icons — Inline SVG Only (No Tabler)
+
+- **Never** use Tabler Icons (`ti-*` classes, `@tabler/icons-webfont`, Tabler CDN). They are not installed and render blank.
+- **Do** import shared icons from `@/components/icons` (Heroicons outline–style inline SVGs).
+- Nav-only icons live in `lib/config/nav.tsx`. For a one-off icon in one file, define a local `function XIcon({ className })` with `<svg>` — match the pattern in `components/icons/index.tsx`.
+- Size icons with Tailwind `h-* w-*` on the component, not `text-*` font sizes.
+
+```tsx
+// ❌ BAD
+<i className="ti-trash text-sm" />
+
+// ✅ GOOD
+import { TrashIcon } from '@/components/icons'
+<TrashIcon className="h-4 w-4" />
+```

@@ -255,7 +255,6 @@ function matchLineItems(
       aiSuggestedCategoryName: item.suggested_category_name ?? null,
       aiCandidates: probableNames,
       categoryAutoMatched,
-      itemGroup: resolvedItemName ?? item.description,
       configured,
       active: true,
     }
@@ -614,7 +613,6 @@ export default function ScanReceiptWizard({
               (a) => a.toLowerCase() !== (c.resolvedItemName ?? c.description).toLowerCase()
             ),
           ].filter(Boolean),
-          item_group: c.itemGroup?.trim() || null,
         }))
 
       const aliasInserts = configsToSave
@@ -748,7 +746,10 @@ export default function ScanReceiptWizard({
           onGuestCreated={handleGuestCreated}
           onConfirmLineItem={handleConfirmLineItem}
           onAddAllToExpense={handleAddAllToExpense}
-          onOpenModal={() => setShowItemModal(true)}
+          onOpenModal={(index) => {
+            setLastModalIndex(index ?? null)
+            setShowItemModal(true)
+          }}
           onBack={() => setStep(2)}
           onSave={handleSave}
         />

@@ -124,25 +124,44 @@ export default function ReceiptDetailClient({ receipt, householdId }: ReceiptDet
           <h2 className="text-xs font-semibold text-white/40 uppercase tracking-wide mb-3">
             {RECEIPTS.DETAIL.LINE_ITEMS}
           </h2>
-          <table className="w-full text-sm">
-            <tbody>
-              {receipt.lineItems.map((item) => (
-                <tr key={item.id} className="border-t border-white/5 first:border-t-0">
-                  <td className="py-2 text-white/80">
-                    {item.description}
-                    {item.quantity !== null && (
-                      <span className="text-white/40 text-xs ml-2">
-                        {RECEIPTS.DETAIL.QUANTITY_ABBR} {item.quantity}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2 text-right text-white font-mono">
-                    {formatCurrency(item.amount)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="flex flex-col divide-y divide-white/5">
+            {receipt.lineItems.map((item) => {
+              const splitPreview = receipt.expenseTotal > 0
+                ? receipt.splits.map((s) => ({
+                    name: s.displayName,
+                    amount: (s.amount / receipt.expenseTotal) * item.amount,
+                    isGuest: s.participantType === 'guest',
+                  }))
+                : []
+              return (
+                <div key={item.id} className="py-2.5 first:pt-0 last:pb-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm text-white/80">
+                      {item.description}
+                      {item.quantity !== null && (
+                        <span className="text-white/40 text-xs ml-2">
+                          {RECEIPTS.DETAIL.QUANTITY_ABBR} {item.quantity}
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-sm text-white font-mono whitespace-nowrap">
+                      {formatCurrency(item.amount)}
+                    </p>
+                  </div>
+                  {splitPreview.length > 0 && (
+                    <p className="text-xs text-white/35 mt-0.5">
+                      {splitPreview.map((s, i) => (
+                        <span key={s.name}>
+                          {i > 0 && <span className="mx-1 text-white/20">·</span>}
+                          {s.name}{s.isGuest ? ' (guest)' : ''} {formatCurrency(s.amount)}
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 

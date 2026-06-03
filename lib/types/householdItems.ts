@@ -10,7 +10,6 @@ export interface HouseholdItem {
   household_id: string
   name: string
   default_category_id: string | null
-  item_group: string | null
   split_overrides: { member_id: string; percentage: number }[] | null
   image_url?: string | null
   category_name?: string

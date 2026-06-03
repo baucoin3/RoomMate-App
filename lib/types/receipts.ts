@@ -36,7 +36,6 @@ export interface LineItemConfig {
   aiSuggestedCategoryName?: string | null
   aiCandidates?: string[]
   categoryAutoMatched: boolean
-  itemGroup: string
   configured: boolean
   active: boolean
 }
@@ -102,7 +101,6 @@ export interface SaveReceiptPayload {
     default_category_id: string | null
     split_overrides?: { member_id: string; percentage: number }[] | null
     initial_aliases?: string[]
-    item_group?: string | null
   }>
   alias_inserts?: Array<{ household_item_id: string; display_text: string }>
 }
@@ -114,7 +112,6 @@ export interface ResolvedHouseholdItem {
   name: string
   default_category_id: string | null
   split_overrides: { member_id: string; percentage: number }[] | null
-  item_group: string | null
   initial_aliases: string[]
   /** normalizeReceiptText(name) — lookup key only */
   normalizedName: string
