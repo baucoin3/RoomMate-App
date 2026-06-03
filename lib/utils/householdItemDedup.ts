@@ -6,8 +6,10 @@ function mergeAliases(existing: string[], incoming: string[]): string[] {
   const merged: string[] = []
   ;[...existing, ...incoming].forEach((alias) => {
     const trimmed = alias.trim()
-    if (!trimmed || seen.has(trimmed)) return
-    seen.add(trimmed)
+    if (!trimmed) return
+    const key = normalizeReceiptText(trimmed)
+    if (!key || seen.has(key)) return
+    seen.add(key)
     merged.push(trimmed)
   })
   return merged
@@ -24,7 +26,6 @@ export function dedupeNewHouseholdItems(items: NewHouseholdItemInput[]): Resolve
     if (!normalizedName) return
 
     const incomingAliases = (item.initial_aliases ?? []).map((a) => a.trim()).filter(Boolean)
-    const itemGroup = item.item_group?.trim() || null
 
     const existing = byNormalized.get(normalizedName)
     if (!existing) {
@@ -32,7 +33,6 @@ export function dedupeNewHouseholdItems(items: NewHouseholdItemInput[]): Resolve
         name: trimmedName,
         default_category_id: item.default_category_id,
         split_overrides: item.split_overrides ?? null,
-        item_group: itemGroup,
         initial_aliases: mergeAliases([], incomingAliases),
         normalizedName,
       })
@@ -43,7 +43,6 @@ export function dedupeNewHouseholdItems(items: NewHouseholdItemInput[]): Resolve
       name: trimmedName,
       default_category_id: item.default_category_id,
       split_overrides: item.split_overrides ?? null,
-      item_group: itemGroup,
       initial_aliases: mergeAliases(existing.initial_aliases, incomingAliases),
       normalizedName,
     })

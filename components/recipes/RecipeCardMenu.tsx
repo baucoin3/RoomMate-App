@@ -5,6 +5,14 @@ import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api/client'
 import { MEAL_LOGS } from '@/locales/en'
 import { ROUTES } from '@/lib/constants/routes'
+import {
+  CheckIcon,
+  EllipsisVerticalIcon,
+  MealMadeIcon,
+  PencilSquareIcon,
+  XMarkIcon,
+  type IconComponent,
+} from '@/components/icons'
 
 interface RecipeCardMenuProps {
   recipeId: string
@@ -64,8 +72,8 @@ export default function RecipeCardMenu({ recipeId, householdId }: RecipeCardMenu
         ? 'bg-red-500/80 border-red-400/30'
         : 'bg-black/40 border-white/15 hover:bg-black/65 hover:border-white/30'
 
-  const triggerIcon =
-    logState === 'done' ? 'ti-check' : logState === 'error' ? 'ti-x' : 'ti-dots'
+  const TriggerIcon: IconComponent =
+    logState === 'done' ? CheckIcon : logState === 'error' ? XMarkIcon : EllipsisVerticalIcon
 
   return (
     <div ref={menuRef} className="relative">
@@ -77,10 +85,10 @@ export default function RecipeCardMenu({ recipeId, householdId }: RecipeCardMenu
           e.stopPropagation()
           if (logState === 'idle') setOpen((v) => !v)
         }}
-        className={`relative z-50 flex items-center justify-center w-7 h-7 rounded-full border text-white backdrop-blur-sm transition-all duration-150 ${triggerBg} opacity-0 group-hover:opacity-100 focus:opacity-100 ${open ? 'opacity-100' : ''}`}
+        className={`relative z-50 flex items-center justify-center w-7 h-7 rounded-full border text-white backdrop-blur-sm transition-all duration-150 ${triggerBg} opacity-50 group-hover:opacity-100 focus:opacity-100 ${open ? 'opacity-100' : ''}`}
         aria-label="Recipe options"
       >
-        <i className={`${triggerIcon} text-[13px]`} />
+        <TriggerIcon className="h-4 w-4" />
       </button>
 
       {/* Popup — appears to the RIGHT of the card */}
@@ -110,7 +118,7 @@ export default function RecipeCardMenu({ recipeId, householdId }: RecipeCardMenu
             className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-white/80 hover:text-white hover:bg-white/8 transition-colors text-left w-full"
           >
             <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-white/8">
-              <i className="ti-pencil text-[12px]" />
+              <PencilSquareIcon className="h-3 w-3" />
             </span>
             {MEAL_LOGS.MENU_EDIT}
           </button>
@@ -129,7 +137,7 @@ export default function RecipeCardMenu({ recipeId, householdId }: RecipeCardMenu
             className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-white/80 hover:text-white hover:bg-white/8 transition-colors text-left w-full"
           >
             <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-[#5DCAA5]/20">
-              <i className="ti-chef-hat text-[12px] text-[#5DCAA5]" />
+              <MealMadeIcon className="h-3 w-3 text-[#5DCAA5]" />
             </span>
             {MEAL_LOGS.MENU_MARK_MADE}
           </button>

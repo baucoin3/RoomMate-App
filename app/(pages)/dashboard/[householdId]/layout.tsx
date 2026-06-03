@@ -16,7 +16,7 @@ export default async function HouseholdLayout({ children, params }: HouseholdLay
 
   const { data: membership } = await supabase
     .from('household_members')
-    .select('id')
+    .select('id, nickname')
     .eq('household_id', params.householdId)
     .eq('user_id', user.id)
     .maybeSingle()
@@ -30,15 +30,17 @@ export default async function HouseholdLayout({ children, params }: HouseholdLay
     .single()
 
   const userName = (user.user_metadata?.full_name as string | undefined) ?? null
-  const userInitial = (userName ?? user.email ?? '?').charAt(0).toUpperCase()
+  const userNickname = membership.nickname ?? null
+  const displayInitial = (userNickname ?? userName ?? user.email ?? '?').charAt(0).toUpperCase()
 
   return (
     <HouseholdShell
       householdId={params.householdId}
       householdName={household?.name ?? ''}
-      userInitial={userInitial}
+      userInitial={displayInitial}
       userEmail={user.email ?? ''}
       userName={userName}
+      userNickname={userNickname}
     >
       {children}
     </HouseholdShell>

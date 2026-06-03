@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
+import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
 import { HOUSEHOLD_DASHBOARD } from '@/locales/en'
-import type { CalendarData, CalendarMealLog, CalendarBillDot } from '@/lib/types/dashboard'
+import type { CalendarData, CalendarMealLog, CalendarBillDot, CalendarReceiptDot } from '@/lib/types/dashboard'
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -11,6 +12,7 @@ const MONTH_NAMES = [
 ] as const
 
 const MEAL_DOT_COLOR = '#5DCAA5'
+const RECEIPT_DOT_COLOR = '#818cf8'
 
 interface HouseholdCalendarProps {
   initialData: CalendarData
@@ -22,6 +24,7 @@ interface HouseholdCalendarProps {
 interface DayEvents {
   bills: CalendarBillDot[]
   meals: CalendarMealLog[]
+  receipts: CalendarReceiptDot[]
 }
 
 function getDayEvents(year: number, month: number, day: number, data: CalendarData): DayEvents {
@@ -29,13 +32,21 @@ function getDayEvents(year: number, month: number, day: number, data: CalendarDa
   return {
     bills: data.bill_dots.filter((b) => b.due_day === day),
     meals: data.meal_logs.filter((m) => m.date === dateStr),
+    receipts: (data.receipt_dots ?? []).filter((r) => r.date === dateStr),
   }
 }
 
 function DayTooltip({ events }: { events: DayEvents }) {
   const all = [
-    ...events.bills.map((b) => ({ color: b.color, label: HOUSEHOLD_DASHBOARD.CALENDAR.BILL_DUE(b.description) })),
-    ...events.meals.map((m) => ({ color: MEAL_DOT_COLOR, label: HOUSEHOLD_DASHBOARD.CALENDAR.RECIPE_MADE(m.made_by_name, m.recipe_name) })),
+    ...events.bills.map((b) => ({ color: b.color, label: HOUSEHOLD_DASHBOARD.CALENDAR.BILL_DUE(b.description), icon: null })),
+    ...events.meals.map((m) => ({ color: MEAL_DOT_COLOR, label: HOUSEHOLD_DASHBOARD.CALENDAR.RECIPE_MADE(m.made_by_name, m.recipe_name), icon: null })),
+    ...events.receipts.map((r) => ({
+      color: RECEIPT_DOT_COLOR,
+      label: r.merchant_name
+        ? HOUSEHOLD_DASHBOARD.CALENDAR.GROCERY_VISIT(r.merchant_name)
+        : HOUSEHOLD_DASHBOARD.CALENDAR.GROCERY_VISIT_UNKNOWN,
+      icon: '🛍',
+    })),
   ]
   const visible = all.slice(0, 4)
   const extra = all.length - visible.length
@@ -44,7 +55,11 @@ function DayTooltip({ events }: { events: DayEvents }) {
     <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 z-50 rounded-xl border border-[--color-border-primary] bg-[--color-background-card] shadow-xl p-2.5 min-w-[180px] max-w-[220px]">
       {visible.map((item, i) => (
         <div key={i} className="flex items-center gap-1.5 py-0.5">
-          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+          {item.icon ? (
+            <span className="text-[10px] leading-none shrink-0">{item.icon}</span>
+          ) : (
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+          )}
           <span className="text-[11px] text-[--color-text-secondary] leading-tight">{item.label}</span>
         </div>
       ))}
@@ -129,7 +144,7 @@ export default function HouseholdCalendar({
           aria-label={HOUSEHOLD_DASHBOARD.CALENDAR.PREV}
           className="w-7 h-7 flex items-center justify-center rounded-lg text-[--color-text-tertiary] hover:text-[--color-text-primary] hover:bg-white/5 transition-colors disabled:opacity-40"
         >
-          <i className="ti-chevron-left text-sm" />
+          <ChevronLeftIcon className="h-4 w-4" />
         </button>
 
         <div className="flex items-center gap-2">
@@ -153,7 +168,7 @@ export default function HouseholdCalendar({
           aria-label={HOUSEHOLD_DASHBOARD.CALENDAR.NEXT}
           className="w-7 h-7 flex items-center justify-center rounded-lg text-[--color-text-tertiary] hover:text-[--color-text-primary] hover:bg-white/5 transition-colors disabled:opacity-40"
         >
-          <i className="ti-chevron-right text-sm" />
+          <ChevronRightIcon className="h-4 w-4" />
         </button>
       </div>
 
@@ -181,12 +196,13 @@ export default function HouseholdCalendar({
           }
 
           const events = getDayEvents(year, month, cell.day, calendarData)
-          const hasEvents = events.bills.length > 0 || events.meals.length > 0
+          const hasEvents = events.bills.length > 0 || events.meals.length > 0 || events.receipts.length > 0
           const isToday = isCurrentMonth && cell.day === todayDay
           const isHovered = hoveredDay === cell.day
 
-          const visibleBills = events.bills.slice(0, 3)
-          const visibleMeals = events.meals.slice(0, 3 - visibleBills.length)
+          const visibleBills = events.bills.slice(0, 2)
+          const visibleMeals = events.meals.slice(0, Math.max(0, 2 - visibleBills.length))
+          const visibleReceipts = events.receipts.slice(0, Math.max(0, 3 - visibleBills.length - visibleMeals.length))
 
           return (
             <div
@@ -227,6 +243,14 @@ export default function HouseholdCalendar({
                       style={{ backgroundColor: MEAL_DOT_COLOR }}
                     />
                   ))}
+                  {visibleReceipts.map((_, ri) => (
+                    <span
+                      key={`r-${ri}`}
+                      className="text-[8px] leading-none"
+                    >
+                      🛍
+                    </span>
+                  ))}
                 </div>
               )}
 
@@ -243,7 +267,11 @@ export default function HouseholdCalendar({
           <span className="w-2 h-2 rounded-full bg-[#5DCAA5]" />
           <span className="text-[11px] text-[--color-text-tertiary]">Meal cooked</span>
         </div>
-        {calendarData.bill_dots.slice(0, 3).map((b) => (
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] leading-none">🛍</span>
+          <span className="text-[11px] text-[--color-text-tertiary]">Grocery run</span>
+        </div>
+        {calendarData.bill_dots.slice(0, 2).map((b) => (
           <div key={b.description} className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: b.color }} />
             <span className="text-[11px] text-[--color-text-tertiary] truncate max-w-[80px]">{b.description}</span>

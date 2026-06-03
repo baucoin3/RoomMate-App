@@ -1,11 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { DashboardData, ActivityItem, RecurringBillAlert, GetStartedStatus, CalendarData } from '@/lib/types/dashboard'
-import { getCurrentCycleDueDate, isDateInCycle } from '@/lib/utils/recurringCycle'
+import type { DashboardData, ActivityItem, GetStartedStatus, CalendarData } from '@/lib/types/dashboard'
 import { getCalendarData } from '@/lib/services/mealLogs'
-
-function diffDays(from: Date, to: Date): number {
-  return Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24))
-}
 
 async function fetchGetStartedStatus(
   supabase: SupabaseClient,
@@ -33,56 +28,6 @@ async function fetchGetStartedStatus(
   } catch (err) {
     console.error('[dashboard/getStarted]', err)
     return { hasHouseholdName: false, hasRecurringBills: false, hasMultipleMembers: false }
-  }
-}
-
-async function fetchRecurringAlerts(
-  supabase: SupabaseClient,
-  householdId: string,
-): Promise<RecurringBillAlert[]> {
-  try {
-    const { data: bills, error: billsErr } = await supabase
-      .from('recurring_expenses')
-      .select('id, description, amount, due_day_of_month, alert_days_before')
-      .eq('household_id', householdId)
-      .eq('is_active', true)
-
-    if (billsErr || !bills?.length) return []
-
-    const { data: loggedExpenses } = await supabase
-      .from('expenses')
-      .select('recurring_expense_id, date')
-      .in('recurring_expense_id', bills.map((b) => b.id))
-
-    const today = new Date()
-    const alerts: RecurringBillAlert[] = []
-
-    for (const bill of bills) {
-      const cycleDueDate = getCurrentCycleDueDate(bill.due_day_of_month)
-      const isLogged = (loggedExpenses ?? []).some(
-        (e) =>
-          e.recurring_expense_id === bill.id &&
-          isDateInCycle(e.date, cycleDueDate),
-      )
-      if (isLogged) continue
-
-      const daysUntilDue = diffDays(today, new Date(cycleDueDate))
-      if (daysUntilDue > bill.alert_days_before) continue
-
-      alerts.push({
-        id: bill.id,
-        description: bill.description,
-        totalAmount: Number(bill.amount),
-        dueDayOfMonth: bill.due_day_of_month,
-        daysUntilDue,
-        cycleDueDate,
-      })
-    }
-
-    return alerts.sort((a, b) => a.daysUntilDue - b.daysUntilDue)
-  } catch (err) {
-    console.error('[dashboard/recurringAlerts]', err)
-    return []
   }
 }
 
@@ -163,10 +108,10 @@ async function fetchCalendarData(supabase: SupabaseClient, householdId: string):
   try {
     const now = new Date()
     const { data } = await getCalendarData(supabase, householdId, now.getFullYear(), now.getMonth())
-    return data ?? { meal_logs: [], bill_dots: [] }
+    return data ?? { meal_logs: [], bill_dots: [], receipt_dots: [] }
   } catch (err) {
     console.error('[dashboard/calendarData]', err)
-    return { meal_logs: [], bill_dots: [] }
+    return { meal_logs: [], bill_dots: [], receipt_dots: [] }
   }
 }
 
@@ -175,14 +120,13 @@ export async function getDashboardData(
   householdId: string,
 ): Promise<{ data: DashboardData | null; error: string | null }> {
   try {
-    const [getStarted, recurringAlerts, recentActivity, calendar] = await Promise.all([
+    const [getStarted, recentActivity, calendar] = await Promise.all([
       fetchGetStartedStatus(supabase, householdId),
-      fetchRecurringAlerts(supabase, householdId),
       fetchRecentActivity(supabase, householdId),
       fetchCalendarData(supabase, householdId),
     ])
 
-    return { data: { getStarted, recurringAlerts, recentActivity, calendar }, error: null }
+    return { data: { getStarted, recentActivity, calendar }, error: null }
   } catch (err) {
     console.error('[dashboard/getDashboardData]', err)
     return { data: null, error: 'Failed to load dashboard data.' }

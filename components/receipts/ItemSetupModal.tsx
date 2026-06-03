@@ -191,6 +191,7 @@ export default function ItemSetupModal({
   const [showItemDropdown, setShowItemDropdown] = useState(false)
   const searchContainerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const [dismissedAiCandidates, setDismissedAiCandidates] = useState<Record<number, Set<string>>>({})
 
   const memberCount = allMembers.length
   const current = localConfigs[idx]
@@ -218,8 +219,11 @@ export default function ItemSetupModal({
     !categoryHasValidSplits(current.categoryId, modalSplitCtx)
 
   const badgeLabel = matchBadgeLabel(current.matchSource)
+  const visibleAiCandidates = (current.aiCandidates ?? []).filter(
+    (name) => !dismissedAiCandidates[idx]?.has(name),
+  )
   const showAiRow =
-    (current.aiCandidates?.length ?? 0) > 0 &&
+    visibleAiCandidates.length > 0 &&
     current.matchSource !== 'catalog' &&
     current.matchSource !== 'alias'
 
@@ -795,40 +799,67 @@ export default function ItemSetupModal({
                             {RECEIPTS.ITEM_SETUP.AI_SUGGESTION_LABEL}
                           </p>
                           <div className="flex flex-wrap gap-1.5">
-                            {(current.aiCandidates ?? []).map((name) => {
+                            {visibleAiCandidates.map((name) => {
                               const item = householdItems.find(
                                 (i) => i.name.toLowerCase() === name.toLowerCase(),
                               )
+                              const handleDismiss = (e: React.MouseEvent) => {
+                                e.stopPropagation()
+                                setDismissedAiCandidates((prev) => {
+                                  const next = { ...prev }
+                                  next[idx] = new Set(prev[idx] ?? [])
+                                  next[idx].add(name)
+                                  return next
+                                })
+                              }
                               if (item) {
                                 return (
-                                  <button
-                                    key={name}
-                                    type="button"
-                                    onClick={() => selectHouseholdItem(item, 'ai')}
-                                    className="text-xs px-2.5 py-1 rounded-full border border-violet-400 bg-violet-500/20 text-violet-100 font-semibold hover:bg-violet-500/35 transition-colors"
-                                  >
-                                    {name}
-                                  </button>
+                                  <span key={name} className="flex items-center gap-0.5 text-xs rounded-full border border-violet-400 bg-violet-500/20 text-violet-100 font-semibold">
+                                    <button
+                                      type="button"
+                                      onClick={() => selectHouseholdItem(item, 'ai')}
+                                      className="px-2.5 py-1 hover:bg-violet-500/35 rounded-l-full transition-colors"
+                                    >
+                                      {name}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={handleDismiss}
+                                      aria-label={`Dismiss ${name}`}
+                                      className="pr-2 pl-0.5 py-1 hover:text-violet-300 transition-colors"
+                                    >
+                                      ×
+                                    </button>
+                                  </span>
                                 )
                               }
                               return (
-                                <button
-                                  key={name}
-                                  type="button"
-                                  onClick={() => {
-                                    setItemSearch(name)
-                                    updateCurrent({
-                                      resolvedItemName: name,
-                                      saveAsHouseholdItem: true,
-                                      householdItemId: null,
-                                      matchSource: 'ai',
-                                    })
-                                    setShowItemDropdown(true)
-                                  }}
-                                  className="text-xs px-2.5 py-1 rounded-full border border-violet-400 bg-violet-500/20 text-violet-100 font-semibold hover:bg-violet-500/35 transition-colors"
-                                >
-                                  {name}
-                                </button>
+                                <span key={name} className="flex items-center gap-0.5 text-xs rounded-full border border-violet-400 bg-violet-500/20 text-violet-100 font-semibold">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setItemSearch(name)
+                                      updateCurrent({
+                                        resolvedItemName: name,
+                                        saveAsHouseholdItem: true,
+                                        householdItemId: null,
+                                        matchSource: 'ai',
+                                      })
+                                      setShowItemDropdown(true)
+                                    }}
+                                    className="px-2.5 py-1 hover:bg-violet-500/35 rounded-l-full transition-colors"
+                                  >
+                                    {name}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleDismiss}
+                                    aria-label={`Dismiss ${name}`}
+                                    className="pr-2 pl-0.5 py-1 hover:text-violet-300 transition-colors"
+                                  >
+                                    ×
+                                  </button>
+                                </span>
                               )
                             })}
                           </div>
@@ -836,31 +867,13 @@ export default function ItemSetupModal({
                       )}
                     </div>
 
-                    {/* Group input and split preview when creating new item */}
-                    {current.householdItemId === null && current.saveAsHouseholdItem && (
-                      <>
-                        <input
-                          type="text"
-                          value={current.itemGroup}
-                          onChange={(e) => updateCurrent({ itemGroup: e.target.value })}
-                          placeholder={RECEIPTS.ITEM_SETUP.GROUP_PLACEHOLDER}
-                          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 transition-colors"
-                        />
-                        {renderSplitPreview(true)}
-                      </>
-                    )}
+                    {current.householdItemId === null && current.saveAsHouseholdItem && renderSplitPreview(true)}
 
                     {current.householdItemId === null && (
                       <button
                         type="button"
                         onClick={() => {
-                          const enabling = !current.saveAsHouseholdItem
-                          updateCurrent({
-                            saveAsHouseholdItem: enabling,
-                            itemGroup: enabling && !current.itemGroup
-                              ? (current.resolvedItemName ?? current.description)
-                              : current.itemGroup,
-                          })
+                          updateCurrent({ saveAsHouseholdItem: !current.saveAsHouseholdItem })
                         }}
                         className={`flex items-start gap-3 w-full p-3.5 rounded-xl border transition-all text-left ${
                           current.saveAsHouseholdItem

@@ -31,7 +31,6 @@ function baseConfig(overrides: Partial<LineItemConfig> = {}): LineItemConfig {
     matchSource: null,
     rememberAlias: false,
     categoryAutoMatched: true,
-    itemGroup: '',
     configured: true,
     active: true,
     ...overrides,

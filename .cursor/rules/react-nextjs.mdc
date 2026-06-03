@@ -97,6 +97,10 @@ export function useCurrentUser() {
 }
 ```
 
+## Icons — Use `@/components/icons`, Not Tabler
+
+Never use Tabler `ti-*` classes or icon font packages. Import SVG icon components from `@/components/icons` and pass `className` for size/color (`h-4 w-4`, `text-white/70`, etc.). Add new shared icons to `components/icons/index.tsx`.
+
 ## No `router.push` with Literal Strings
 
 Always use constants from `lib/constants/routes.ts`:

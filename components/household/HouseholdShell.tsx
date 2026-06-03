@@ -16,6 +16,7 @@ interface HouseholdShellProps {
   userInitial: string
   userEmail: string
   userName: string | null
+  userNickname: string | null
 }
 
 function getGreeting(): string {
@@ -32,6 +33,7 @@ export default function HouseholdShell({
   userInitial,
   userEmail,
   userName,
+  userNickname,
 }: HouseholdShellProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -41,8 +43,8 @@ export default function HouseholdShell({
   const menuRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
 
-  const displayName = userName ?? userEmail
-  const greeting = `${getGreeting()}, ${userName ?? userEmail.split('@')[0]}`
+  const displayName = userNickname ?? userName ?? userEmail.split('@')[0]
+  const greeting = `${getGreeting()}, ${displayName}`
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -126,9 +128,7 @@ export default function HouseholdShell({
             >
               <div className="border-b border-white/10 px-4 py-2">
                 <p className="truncate text-xs font-medium text-white">{displayName}</p>
-                {userName && (
-                  <p className="truncate text-xs text-white/50">{userEmail}</p>
-                )}
+                <p className="truncate text-xs text-white/50">{userEmail}</p>
               </div>
               {signOutError && (
                 <p className="px-4 py-2 text-xs text-red-400">{signOutError}</p>

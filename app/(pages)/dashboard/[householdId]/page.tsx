@@ -4,16 +4,11 @@ import { createClient } from '@/lib/supabase/server'
 import { ROUTES } from '@/lib/constants/routes'
 import { ERRORS } from '@/locales/en'
 import { getDashboardData } from '@/lib/services/dashboard'
-import QuickActionsRow from '@/components/dashboard/QuickActionsRow'
-import GetStartedChecklist from '@/components/dashboard/GetStartedChecklist'
-import RecurringBillAlerts from '@/components/dashboard/RecurringBillAlerts'
 import RecipesCard from '@/components/dashboard/RecipesCard'
 import RecentActivityFeed from '@/components/dashboard/RecentActivityFeed'
 import HouseholdCalendar from '@/components/dashboard/HouseholdCalendar'
 import {
   QuickActionsSkeleton,
-  GetStartedSkeleton,
-  BillAlertsSkeleton,
   ActivitySkeleton,
   CalendarSkeleton,
 } from '@/components/dashboard/DashboardSkeleton'
@@ -59,18 +54,6 @@ export default async function HouseholdHubPage({ params }: HouseholdHubPageProps
           initialYear={now.getFullYear()}
           initialMonth={now.getMonth()}
         />
-      </Suspense>
-
-      <Suspense fallback={<QuickActionsSkeleton />}>
-        <QuickActionsRow householdId={params.householdId} />
-      </Suspense>
-
-      <Suspense fallback={<GetStartedSkeleton />}>
-        <GetStartedChecklist data={data.getStarted} householdId={params.householdId} />
-      </Suspense>
-
-      <Suspense fallback={<BillAlertsSkeleton />}>
-        <RecurringBillAlerts alerts={data.recurringAlerts} householdId={params.householdId} />
       </Suspense>
 
       <RecipesCard householdId={params.householdId} />

@@ -7,6 +7,7 @@ import { RECIPES } from '@/locales/en'
 import { ROUTES } from '@/lib/constants/routes'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import type { Recipe, RecipeTag } from '@/lib/types/recipe'
+import { MagnifyingGlassIcon, PlusIcon } from '@/components/icons'
 import RecipeCard from './RecipeCard'
 
 type SortKey = 'newest' | 'az' | 'author'
@@ -152,7 +153,7 @@ export default function RecipesClient({
           onClick={() => router.push(ROUTES.RECIPE_NEW(householdId))}
           className="flex items-center gap-1.5 bg-[#C8882E] hover:bg-[#A96F1F] text-white rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors shrink-0"
         >
-          <i className="ti-plus text-[13px]" />
+          <PlusIcon className="h-[13px] w-[13px]" />
           {RECIPES.ADD_BUTTON}
         </button>
       </div>
@@ -168,7 +169,7 @@ export default function RecipesClient({
       <div className="flex flex-wrap items-center gap-2.5">
         {/* Search */}
         <div className="relative flex-1 min-w-[200px]">
-          <i className="ti-search absolute left-3 top-1/2 -translate-y-1/2 text-[--color-text-tertiary] text-[13px]" />
+          <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-[13px] w-[13px] -translate-y-1/2 text-[--color-text-tertiary]" />
           <input
             type="text"
             value={searchQuery}
@@ -299,7 +300,7 @@ export default function RecipesClient({
             onClick={() => router.push(ROUTES.RECIPE_NEW(householdId))}
             className="rounded-xl min-h-[180px] flex flex-col items-center justify-center gap-2 border border-dashed border-[--color-border-secondary] bg-[--color-background-secondary] cursor-pointer hover:border-[--color-border-primary] transition-colors"
           >
-            <i className="ti-plus text-2xl text-[--color-text-tertiary]" />
+            <PlusIcon className="h-8 w-8 text-[--color-text-tertiary]" />
             <span
               className="text-[15px] text-[--color-text-tertiary]"
               style={{ fontFamily: "'Caveat', cursive" }}

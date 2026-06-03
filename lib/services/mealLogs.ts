@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MealLog } from '@/lib/types/recipe'
-import type { CalendarData } from '@/lib/types/dashboard'
+import type { CalendarData, CalendarReceiptDot } from '@/lib/types/dashboard'
 
 export async function createMealLog(
   supabase: SupabaseClient,
@@ -16,13 +16,25 @@ export async function createMealLog(
 
   if (memberErr || !member) return { data: null, error: 'Not a member of this household.' }
 
+  const madeAt = payload.made_at ?? new Date().toLocaleDateString('en-CA')
+
+  const { data: existing } = await supabase
+    .from('meal_logs')
+    .select('id')
+    .eq('recipe_id', payload.recipe_id)
+    .eq('household_id', payload.household_id)
+    .eq('made_at', madeAt)
+    .maybeSingle()
+
+  if (existing) return { data: { id: existing.id }, error: null }
+
   const { data, error } = await supabase
     .from('meal_logs')
     .insert({
       recipe_id: payload.recipe_id,
       household_id: payload.household_id,
       made_by_member_id: member.id,
-      made_at: payload.made_at ?? new Date().toLocaleDateString('en-CA'),
+      made_at: madeAt,
       notes: payload.notes ?? null,
     })
     .select('id')
@@ -93,7 +105,7 @@ export async function getCalendarData(
   const lastDayDate = new Date(year, month + 1, 0)
   const lastDay = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDayDate.getDate()).padStart(2, '0')}`
 
-  const [logsResult, billsResult] = await Promise.all([
+  const [logsResult, billsResult, receiptsResult] = await Promise.all([
     supabase
       .from('meal_logs')
       .select('made_at, recipes(name), household_members(nickname)')
@@ -107,6 +119,14 @@ export async function getCalendarData(
       .select('due_day_of_month, description, color')
       .eq('household_id', householdId)
       .eq('is_active', true),
+
+    supabase
+      .from('receipts')
+      .select('receipt_date, merchant_name')
+      .eq('household_id', householdId)
+      .not('receipt_date', 'is', null)
+      .gte('receipt_date', firstDay)
+      .lte('receipt_date', lastDay),
   ])
 
   if (logsResult.error) return { data: null, error: logsResult.error.message }
@@ -124,5 +144,10 @@ export async function getCalendarData(
     color: row.color ?? '#ef4444',
   }))
 
-  return { data: { meal_logs, bill_dots }, error: null }
+  const receipt_dots: CalendarReceiptDot[] = (receiptsResult.data ?? []).map((row) => ({
+    date: row.receipt_date as string,
+    merchant_name: row.merchant_name as string | null,
+  }))
+
+  return { data: { meal_logs, bill_dots, receipt_dots }, error: null }
 }

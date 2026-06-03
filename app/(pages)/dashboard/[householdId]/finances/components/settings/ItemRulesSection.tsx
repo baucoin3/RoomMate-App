@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import type { ExpenseCategory, HouseholdMemberSummary } from '@/lib/types/finances'
 import type { HouseholdItem, HouseholdItemAlias } from '@/lib/types/householdItems'
@@ -29,32 +29,14 @@ function ItemForm({ householdId, categories, members, initialItem, onSaved, onCa
   const isEditing = Boolean(initialItem)
   const [name, setName] = useState(initialItem?.name ?? '')
   const [categoryId, setCategoryId] = useState(initialItem?.default_category_id ?? '')
-  const [group, setGroup] = useState(initialItem?.item_group ?? '')
   const [useCustomSplit, setUseCustomSplit] = useState(Boolean(initialItem?.split_overrides))
   const [splits, setSplits] = useState(() => initialItem?.split_overrides
     ? initialItem.split_overrides.map((s) => ({ household_member_id: s.member_id, percentage: s.percentage }))
     : buildDefaultSplits(members))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [groupSuggestions, setGroupSuggestions] = useState<string[]>([])
-  const [showSuggestions, setShowSuggestions] = useState(false)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const splitsValid = !useCustomSplit || splitsSumTo100(splits)
-
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (!group.trim()) { setGroupSuggestions([]); return }
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const res = await apiClient.get<{ data: string[] }>(
-          `/api/household-items/groups?householdId=${householdId}`,
-        )
-        setGroupSuggestions((res.data.data ?? []).filter((g) => g.toLowerCase().includes(group.toLowerCase())))
-      } catch { setGroupSuggestions([]) }
-    }, 250)
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
-  }, [group, householdId])
 
   async function handleSubmit() {
     if (!name.trim() || !splitsValid) return
@@ -64,7 +46,6 @@ function ItemForm({ householdId, categories, members, initialItem, onSaved, onCa
       const payload = {
         name: name.trim(),
         default_category_id: categoryId || null,
-        item_group: group.trim() || null,
         split_overrides: useCustomSplit ? splits.map((s) => ({ member_id: s.household_member_id, percentage: s.percentage })) : null,
         household_id: householdId,
       }
@@ -101,33 +82,6 @@ function ItemForm({ householdId, categories, members, initialItem, onSaved, onCa
           <option key={c.id} value={c.id}>{c.name}</option>
         ))}
       </select>
-
-      <div className="relative">
-        <input
-          type="text"
-          value={group}
-          onChange={(e) => { setGroup(e.target.value); setShowSuggestions(true) }}
-          onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-          placeholder={FINANCES.SETTINGS.GROUP_PLACEHOLDER}
-          className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-white/25 outline-none focus:border-indigo-500"
-        />
-        {showSuggestions && groupSuggestions.length > 0 && (
-          <ul className="absolute left-0 right-0 top-full mt-1 z-20 rounded-xl border border-white/10 bg-[#2a2a32] shadow-xl overflow-hidden">
-            {groupSuggestions.map((g) => (
-              <li key={g}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => { setGroup(g); setShowSuggestions(false) }}
-                  className="w-full text-left px-4 py-2.5 text-sm text-white/80 hover:bg-white/5"
-                >
-                  {g}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
 
       <div className="flex items-center gap-3">
         <button
@@ -382,37 +336,21 @@ export default function ItemRulesSection({ householdId, items, categories, membe
     }
   }
 
-  const grouped = items.reduce<Record<string, HouseholdItem[]>>((acc, item) => {
-    const key = item.item_group ?? '__ungrouped__'
-    return { ...acc, [key]: [...(acc[key] ?? []), item] }
-  }, {})
-
-  const sortedGroups = Object.keys(grouped).sort((a, b) => {
-    if (a === '__ungrouped__') return 1
-    if (b === '__ungrouped__') return -1
-    return a.localeCompare(b)
-  })
+  const sortedItems = [...items].sort((a, b) => a.name.localeCompare(b.name))
 
   return (
     <div className="flex flex-col gap-4">
-      {sortedGroups.map((groupKey) => (
-        <div key={groupKey} className="flex flex-col gap-2">
-          <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wide">
-            {groupKey === '__ungrouped__' ? FINANCES.SETTINGS.UNGROUPED : groupKey}
-          </h4>
-          {grouped[groupKey].map((item) => (
-            <ItemRow
-              key={item.id}
-              item={item}
-              householdId={householdId}
-              categories={categories}
-              members={members}
-              deleting={deleting === item.id}
-              onUpdated={(updated) => onItemsChanged((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))}
-              onDelete={handleDelete}
-            />
-          ))}
-        </div>
+      {sortedItems.map((item) => (
+        <ItemRow
+          key={item.id}
+          item={item}
+          householdId={householdId}
+          categories={categories}
+          members={members}
+          deleting={deleting === item.id}
+          onUpdated={(updated) => onItemsChanged((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))}
+          onDelete={handleDelete}
+        />
       ))}
 
       {deleteError && <p className="text-xs text-red-400">{deleteError}</p>}

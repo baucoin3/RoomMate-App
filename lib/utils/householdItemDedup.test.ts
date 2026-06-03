@@ -15,6 +15,15 @@ describe('dedupeNewHouseholdItems', () => {
     expect(result[0].initial_aliases).toEqual(['CANDY BAR', 'chocolate candy', 'gummy'])
   })
 
+  it('merges initial_aliases that normalize to the same key', () => {
+    const items: NewHouseholdItemInput[] = [
+      { name: 'candy', default_category_id: null, initial_aliases: ['CANDY BAR', 'candy bar'] },
+    ]
+    const result = dedupeNewHouseholdItems(items)
+    expect(result).toHaveLength(1)
+    expect(result[0].initial_aliases).toEqual(['CANDY BAR'])
+  })
+
   it('treats Candy then candy as one row with last display name', () => {
     const items: NewHouseholdItemInput[] = [
       { name: 'Candy', default_category_id: null },
@@ -60,14 +69,13 @@ describe('dedupeNewHouseholdItems', () => {
     expect(result.map((r) => r.name).sort()).toEqual(['candy', 'chips'])
   })
 
-  it('trims item_group and uses last wins for metadata', () => {
+  it('uses last wins for default_category_id when duplicates disagree', () => {
     const items: NewHouseholdItemInput[] = [
-      { name: 'milk', default_category_id: 'cat-1', item_group: '  dairy  ' },
-      { name: 'milk', default_category_id: 'cat-2', item_group: 'beverages' },
+      { name: 'milk', default_category_id: 'cat-1' },
+      { name: 'milk', default_category_id: 'cat-2' },
     ]
     const result = dedupeNewHouseholdItems(items)
     expect(result).toHaveLength(1)
     expect(result[0].default_category_id).toBe('cat-2')
-    expect(result[0].item_group).toBe('beverages')
   })
 })

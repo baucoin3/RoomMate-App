@@ -12,7 +12,7 @@ After this work, receipt save should:
 1. **Dedupe in-memory** by normalized name before any insert.
 2. **Insert only names that do not already exist** in the DB (single batch insert).
 3. **Attach all `initial_aliases`** from collapsed duplicates to the one resolved item id (inserted or pre-existing).
-4. **Preserve “last wins”** for `default_category_id`, `split_overrides`, and `item_group` when duplicates disagree.
+4. **Preserve “last wins”** for `default_category_id` and `split_overrides` when duplicates disagree.
 
 The receipt / expense / split flow must continue unchanged aside from this household-item prelude.
 
@@ -59,10 +59,6 @@ configsToSave
 
 - `household_items_household_id_name_key` → unique `(household_id, name)` (exact string; case-sensitive unless DB uses citext — assume **case-sensitive**).
 - Matching elsewhere uses `normalizeReceiptText` (`lib/utils/itemMatching.ts`) for fuzzy/alias logic — **dedupe key should align with that**, but **stored `name` should remain the trimmed display string from the winning row**.
-
-### Known gap (fix in this plan)
-
-`saveReceipt` currently **drops `item_group`** on insert even though the client sends it. Include `item_group` when implementing the new helper.
 
 ### Existing utilities to reuse
 
@@ -120,7 +116,6 @@ export interface ResolvedHouseholdItem {
   name: string
   default_category_id: string | null
   split_overrides: { member_id: string; percentage: number }[] | null
-  item_group: string | null
   initial_aliases: string[]
   /** normalizeReceiptText(name) — lookup key only */
   normalizedName: string
@@ -147,8 +142,7 @@ export function dedupeNewHouseholdItems(
 2. `normalizedName = normalizeReceiptText(name.trim())` — if empty after normalize, skip.
 3. Iterate in **array order** (stable). For each item:
    - If `normalizedName` not seen: push new `ResolvedHouseholdItem` with trimmed `name`, fields from item, `initial_aliases` from `item.initial_aliases ?? []` (dedupe aliases with `Set` + trim, preserve first-seen display order).
-   - If seen: **overwrite** `default_category_id`, `split_overrides`, `item_group`, and `name` (trimmed) from current row; **append** new aliases into the set (union).
-4. `item_group`: `item.item_group?.trim() || null` (match client).
+   - If seen: **overwrite** `default_category_id`, `split_overrides`, and `name` (trimmed) from current row; **append** new aliases into the set (union).
 
 **Do not** hit the database in this function.
 
@@ -188,7 +182,7 @@ export async function resolveNewHouseholdItemsForReceipt(
    - Build `Map<string, { id, name }>` keyed by `normalizeReceiptText(row.name)`.
 3. Partition `deduped`:
    - **existing** → push `{ id, normalizedName, name: dbName, initial_aliases }` (use DB `name` for display consistency).
-   - **toInsert** → rows for batch insert: `{ household_id, name, default_category_id, split_overrides, item_group }`.
+   - **toInsert** → rows for batch insert: `{ household_id, name, default_category_id, split_overrides }`.
 4. If `toInsert.length > 0`, single `.insert(toInsert).select('id, name')`.
    - On unique violation (race: another request inserted same name): **fallback** — re-run step 2 select for conflicting normalized names only, or select all household items again once (keep simple: one refetch of `id, name` for household and merge). Document in code comment.
 5. Merge inserted + existing into return array with `initial_aliases` from deduped resolved rows.
@@ -293,7 +287,6 @@ If you surface a hard failure, add to `locales/en.ts` under `RECEIPTS.ERRORS` (e
 | Aliases on dedupe | **Union** all `initial_aliases` + line descriptions from merged rows |
 | Item already in DB | Skip insert; use existing `id`; still upsert aliases |
 | Update existing item splits/category from receipt save | **No** — only set fields on **insert**. Do not PATCH existing rows during receipt save (avoids overwriting catalog). |
-| `item_group` on insert | Include (fix current omission) |
 | Case `Candy` vs existing `candy` | Normalized match treats as existing; no second insert |
 
 ---
@@ -307,7 +300,7 @@ Follow the plan step-by-step in order. Do not change receipt split math, getOweS
 
 Key requirements:
 - Add dedupeNewHouseholdItems (pure, tested): normalize with normalizeReceiptText, last-wins metadata, union initial_aliases
-- Add resolveNewHouseholdItemsForReceipt: batch-select existing items by household, insert only missing names (include item_group), handle unique races with a refetch fallback
+- Add resolveNewHouseholdItemsForReceipt: batch-select existing items by household, insert only missing names, handle unique races with a refetch fallback
 - Refactor saveReceipt to use the resolver and attach aliases by resolved id (not raw payload index)
 - Do not PATCH existing household_items during receipt save
 
