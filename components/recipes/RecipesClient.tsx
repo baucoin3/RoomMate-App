@@ -292,6 +292,7 @@ export default function RecipesClient({
               image_url={recipe.image_url}
               category_tag={recipe.category_tag}
               cookTimeLabel={null}
+              ingredients={recipe.recipe_ingredients}
             />
           ))}
 

@@ -11,6 +11,7 @@ import { RECIPES_BUCKET, RECIPE_IMAGE_MAX_BYTES } from '@/lib/config'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import { createClient } from '@/lib/supabase/client'
 import type { RecipeDetail, CreateRecipePayload, UpdateRecipePayload, RecipeTag } from '@/lib/types/recipe'
+import { toTitleCase, quantityToUpperCase, capitalizeSentences } from '@/lib/utils/recipeText'
 
 interface IngredientRow {
   name: string
@@ -265,11 +266,14 @@ export default function RecipeForm({ mode, householdId, initialData, existingTag
     try {
       const ingredientPayload = ingredients
         .filter((i) => i.name.trim())
-        .map((i) => ({ name: i.name.trim(), quantity: i.quantity.trim() || null }))
+        .map((i) => ({
+          name: toTitleCase(i.name.trim()),
+          quantity: i.quantity.trim() ? quantityToUpperCase(i.quantity.trim()) : null,
+        }))
 
       const stepPayload = steps
         .filter((s) => s.instruction.trim())
-        .map((s) => ({ instruction: s.instruction.trim() }))
+        .map((s) => ({ instruction: capitalizeSentences(s.instruction.trim()) }))
 
       if (mode === 'create') {
         const payload: CreateRecipePayload = {
@@ -422,7 +426,7 @@ export default function RecipeForm({ mode, householdId, initialData, existingTag
               autoComplete="off"
             />
             {showTagDropdown && (filteredTags.length > 0 || isNewTag) && (
-              <ul className="absolute top-full left-0 right-0 mt-1 z-20 rounded-lg border border-[--color-border-secondary] bg-[--color-background-card] shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+              <ul className="absolute top-full left-0 right-0 mt-1 z-20 rounded-lg border border-[--color-border-secondary] bg-[--color-background-popover] shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                 {filteredTags.map((tag) => (
                   <li key={tag}>
                     <button

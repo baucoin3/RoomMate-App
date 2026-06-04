@@ -6,6 +6,8 @@ alwaysApply: false
 
 # API Route Conventions
 
+**Planning a new route?** Ask production-readiness questions first — see `CLAUDE.md` §12 (RLS, batching, idempotency, partial failure, scope).
+
 ## Structure of Every Route Handler
 
 ```ts

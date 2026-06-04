@@ -61,6 +61,8 @@ HTTP status conventions:
 
 ## 4. Database (Supabase) Standards
 
+**Full schema, RLS matrix, functions, storage, and code map:** `.cursor/rules/database-schema.mdc`.
+
 ### Never call the DB inside a loop
 
 ```ts
@@ -204,36 +206,11 @@ If a handler exceeds ~50 lines of logic, extract it into `lib/services/`.
 
 ## 10. Database Schema
 
-**Supabase Project ID:** `inbexkcbkoilfpuwctkx` — Full verbose schema lives in `.cursor/rules/database-schema.mdc`. Summary below.
+**Supabase Project ID:** `inbexkcbkoilfpuwctkx` — **Authoritative reference:** [`.cursor/rules/database-schema.mdc`](.cursor/rules/database-schema.mdc) (tables, RLS policies, functions, storage, FK map, service ownership).
 
-### Enums
-- `list_owner_type`: `'user' | 'household'`
+**Summary:** 24 `public` tables — **12 with RLS**, **12 without** (finances, recipes, shopping stacks). Domains beyond the original docs: guests/groups, recurring bills + payment reports, receipts + line items, meal logs, calendar events, recipe tags, household item catalog.
 
-### Tables & Purpose
-
-| Table | RLS | Purpose |
-|-------|-----|---------|
-| `households` | ✅ | Top-level entity — name + invite_code |
-| `household_members` | ✅ | Links `auth.users` → `households`; has `nickname`, `is_rent_owner` |
-| `expense_categories` | ⚠️ | Per-household expense labels (e.g. "Groceries") |
-| `category_splits` | ⚠️ | Default % split per category per member (0–100) |
-| `expenses` | ⚠️ | A logged expense — `total_amount`, `paid_by_member_id`, optional `receipt_id` |
-| `expense_splits` | ⚠️ | Per-member computed `calculated_amount` + `is_settled` for each expense |
-| `shopping_lists` | ⚠️ | Named list owned by a user or household (`owner_type` enum) |
-| `shopping_list_items` | ⚠️ | Line items with `quantity`, `unit`, `is_checked` |
-| `recipes` | ⚠️ | Household recipes with `created_by`, `notes`, `image_url` |
-| `recipe_ingredients` | ⚠️ | Ingredients: `name`, `quantity`, `unit` |
-| `recipe_steps` | ⚠️ | Ordered instructions: `step_number`, `instruction` |
-| `household_items` | ⚠️ | Reusable item catalog with optional `default_category_id` |
-
-⚠️ = RLS not yet enabled — **must be added before shipping**.
-
-### Key Relationships
-- `household_members.user_id` → `auth.users.id`
-- `household_members.household_id` → `households.id`
-- `expense_splits` links `expenses` ↔ `household_members` (who owes what)
-- `category_splits` links `expense_categories` ↔ `household_members` (default splits)
-- `shopping_lists.owner_type` determines whether `user_id` or `household_id` is populated
+Do not duplicate the schema here; update `database-schema.mdc` when the database changes.
 
 ---
 
@@ -256,3 +233,24 @@ lib/
 locales/
   en.ts         — ALL user-facing strings
 ```
+
+---
+
+## 12. Plan Mode — Server Features & Production Readiness
+
+When **planning** a new API route, `lib/services/` function, or other server-side feature, ask the user (use `AskQuestion` when possible) before locking the design:
+
+- **RLS & auth:** Must this work under `createClient()` (anon + RLS) now, or is `createAdminClient()` acceptable temporarily?
+- **Data integrity:** Need Postgres transactions, unique constraints, or idempotency keys (e.g. `recurring_payment_reports` per cycle)?
+- **Batching:** Expected row counts; single insert/upsert vs chunks; no DB calls inside loops or unnecessary `Promise.all` round trips.
+- **Partial failure:** Compensating deletes (e.g. household create rollback) vs leaving orphans; what the API returns on halfway failure.
+- **Deduping:** Which unique indexes to upsert on; return 409 vs silent merge.
+- **Validation:** Handler-only checks vs DB CHECK/FK; guest vs member payer rules.
+- **Observability:** `console.error` context, cron/route secrets, email or storage side effects.
+- **Scope:** MVP vs ship-blocking — migration, `locales/en.ts`, `lib/types/`, RLS policies.
+
+Do not assume how many production-grade safeguards are needed until the user confirms them. 
+
+---
+
+Coding standards in this file mirror `.cursor/rules/` — keep both in sync when rules change.

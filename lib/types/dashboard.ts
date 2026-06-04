@@ -32,10 +32,18 @@ export interface CalendarReceiptDot {
   merchant_name: string | null
 }
 
+export interface CalendarCustomEvent {
+  id: string
+  date: string
+  title: string
+  note: string | null
+}
+
 export interface CalendarData {
   meal_logs: CalendarMealLog[]
   bill_dots: CalendarBillDot[]
   receipt_dots: CalendarReceiptDot[]
+  custom_events: CalendarCustomEvent[]
 }
 
 export interface DashboardData {

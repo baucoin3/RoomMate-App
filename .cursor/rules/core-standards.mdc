@@ -5,6 +5,8 @@ alwaysApply: true
 
 # Core Coding Standards
 
+**Supabase schema / RLS / table map:** `.cursor/rules/database-schema.mdc`.
+
 ## No Hardcoded Text or Magic Values
 
 - **All user-facing strings** must live in `locales/en.ts` (and any other locale files). Never inline copy into JSX or API responses.

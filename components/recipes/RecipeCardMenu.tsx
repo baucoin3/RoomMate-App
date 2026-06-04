@@ -10,22 +10,27 @@ import {
   EllipsisVerticalIcon,
   MealMadeIcon,
   PencilSquareIcon,
+  ShoppingCartIcon,
   XMarkIcon,
   type IconComponent,
 } from '@/components/icons'
+import AddToShoppingListModal from '@/components/recipes/AddToShoppingListModal'
 
 interface RecipeCardMenuProps {
   recipeId: string
+  recipeName: string
   householdId: string
+  ingredients: { name: string }[]
 }
 
 type LogState = 'idle' | 'logging' | 'done' | 'error'
 
-export default function RecipeCardMenu({ recipeId, householdId }: RecipeCardMenuProps) {
+export default function RecipeCardMenu({ recipeId, recipeName, householdId, ingredients }: RecipeCardMenuProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [revealed, setRevealed] = useState(false)
   const [logState, setLogState] = useState<LogState>('idle')
+  const [showAddToList, setShowAddToList] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   // Two-frame reveal so CSS transition has a starting keyframe to animate from
@@ -76,6 +81,7 @@ export default function RecipeCardMenu({ recipeId, householdId }: RecipeCardMenu
     logState === 'done' ? CheckIcon : logState === 'error' ? XMarkIcon : EllipsisVerticalIcon
 
   return (
+    <>
     <div ref={menuRef} className="relative">
       {/* Trigger — 3-dot button */}
       <button
@@ -141,8 +147,42 @@ export default function RecipeCardMenu({ recipeId, householdId }: RecipeCardMenu
             </span>
             {MEAL_LOGS.MENU_MARK_MADE}
           </button>
+
+          {ingredients.length > 0 && (
+            <>
+              {/* Divider */}
+              <div className="mx-2 h-px bg-white/8" />
+
+              {/* Add to shopping list */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setOpen(false)
+                  setShowAddToList(true)
+                }}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-white/80 hover:text-white hover:bg-white/8 transition-colors text-left w-full"
+              >
+                <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-indigo-500/20">
+                  <ShoppingCartIcon className="h-3 w-3 text-indigo-400" />
+                </span>
+                {MEAL_LOGS.MENU_ADD_TO_LIST}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
+
+    {showAddToList && (
+      <AddToShoppingListModal
+        householdId={householdId}
+        recipeName={recipeName}
+        ingredients={ingredients}
+        onClose={() => setShowAddToList(false)}
+      />
+    )}
+    </>
   )
 }

@@ -13,10 +13,12 @@ import {
   MealMadeIcon,
   PencilSquareIcon,
   RECIPE_IMAGE_PLACEHOLDERS,
+  ShoppingCartIcon,
   TrashIcon,
   UserIcon,
   XMarkIcon,
 } from '@/components/icons'
+import AddToShoppingListModal from '@/components/recipes/AddToShoppingListModal'
 
 function OrnamentalDivider() {
   return (
@@ -44,6 +46,7 @@ export default function RecipeDetail({ recipe, householdId, initialMealLogs = []
   const [excludedSteps, setExcludedSteps] = useState<Set<string>>(new Set())
   const [logState, setLogState] = useState<LogState>('idle')
   const [mealLogs, setMealLogs] = useState<MealLog[]>(initialMealLogs)
+  const [showAddToList, setShowAddToList] = useState(false)
 
   async function handleMarkMadeToday() {
     setLogState('logging')
@@ -176,6 +179,16 @@ export default function RecipeDetail({ recipe, householdId, initialMealLogs = []
                   ? MEAL_LOGS.ERROR
                   : MEAL_LOGS.MARK_MADE_TODAY}
           </button>
+
+          {recipe.recipe_ingredients.length > 0 && (
+            <button
+              onClick={() => setShowAddToList(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-base rounded-md border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+            >
+              <ShoppingCartIcon className="h-[15px] w-[15px]" />
+              {RECIPES.DETAIL.ADD_TO_LIST}
+            </button>
+          )}
 
           <button
             onClick={() => router.push(ROUTES.RECIPE_EDIT(householdId, recipe.id))}
@@ -329,6 +342,15 @@ export default function RecipeDetail({ recipe, householdId, initialMealLogs = []
             ))}
           </div>
         </section>
+      )}
+
+      {showAddToList && (
+        <AddToShoppingListModal
+          householdId={householdId}
+          recipeName={recipe.name}
+          ingredients={recipe.recipe_ingredients}
+          onClose={() => setShowAddToList(false)}
+        />
       )}
     </div>
   )
