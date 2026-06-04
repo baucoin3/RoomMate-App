@@ -115,6 +115,8 @@ export interface RecurringBillMemberStatus {
   is_settled: boolean | null
   /** Only when logged — use for settle button */
   split_id: string | null
+  /** True if member has a row in recurring_payment_reports for the current cycle */
+  self_reported: boolean
 }
 
 export interface RecurringBillOverview {

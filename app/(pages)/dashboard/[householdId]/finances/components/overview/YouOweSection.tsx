@@ -36,9 +36,9 @@ function RecurringBillsSubSection({
   householdId: string
   onChanged: () => void
 }) {
-  const [collapsed, setCollapsed] = useState(false)
-  const [settling, setSettling] = useState<Set<string>>(new Set())
+  const [reporting, setReporting] = useState<Set<string>>(new Set())
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [collapsed, setCollapsed] = useState(false)
 
   if (bills.length === 0) return null
 
@@ -54,22 +54,18 @@ function RecurringBillsSubSection({
     return acc
   }, {})
 
-  async function settle(bill: RecurringBillOverview) {
-    const viewerMember = bill.members.find((m) => m.is_viewer)
-    if (!viewerMember) return
-
-    setSettling((prev) => new Set(prev).add(bill.recurring_expense_id))
+  async function reportPaid(bill: RecurringBillOverview) {
+    setReporting((prev) => new Set(prev).add(bill.recurring_expense_id))
     setErrors((prev) => ({ ...prev, [bill.recurring_expense_id]: '' }))
     try {
-      await apiClient.post(`/api/finances/recurring/${bill.recurring_expense_id}/settle-member`, {
+      await apiClient.post(`/api/finances/recurring/${bill.recurring_expense_id}/report-paid`, {
         household_id: householdId,
-        member_id: viewerMember.member_id,
       })
       onChanged()
     } catch (err) {
       setErrors((prev) => ({ ...prev, [bill.recurring_expense_id]: getErrorMessage(err) }))
     } finally {
-      setSettling((prev) => {
+      setReporting((prev) => {
         const next = new Set(prev)
         next.delete(bill.recurring_expense_id)
         return next
@@ -115,8 +111,11 @@ function RecurringBillsSubSection({
 
             {/* Bill rows under this payer */}
             {payerBills.map((bill) => {
-              const isSettling = settling.has(bill.recurring_expense_id)
-              const viewerAlreadySettled = bill.members.find((m) => m.is_viewer)?.is_settled === true
+              const isReporting = reporting.has(bill.recurring_expense_id)
+              const viewerMember = bill.members.find((m) => m.is_viewer)
+              const viewerAlreadySettled = viewerMember?.is_settled === true
+              const viewerPreReported =
+                bill.cycle_status === 'not_logged' && viewerMember?.self_reported === true
               const err = errors[bill.recurring_expense_id]
 
               return (
@@ -138,14 +137,18 @@ function RecurringBillsSubSection({
                     <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 shrink-0">
                       {FINANCES.OVERVIEW.SETTLED_BADGE}
                     </span>
+                  ) : viewerPreReported ? (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 shrink-0">
+                      {FINANCES.OVERVIEW.REPORTED_AWAITING_LOG}
+                    </span>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => settle(bill)}
-                      disabled={isSettling}
+                      onClick={() => reportPaid(bill)}
+                      disabled={isReporting}
                       className="text-xs font-medium text-indigo-400 enabled:hover:text-indigo-300 transition-colors disabled:opacity-50 shrink-0"
                     >
-                      {isSettling ? FINANCES.OVERVIEW.SETTLING_RECURRING : FINANCES.OVERVIEW.SETTLE_RECURRING}
+                      {isReporting ? FINANCES.OVERVIEW.REPORTING_PAID : FINANCES.OVERVIEW.I_PAID_MY_SHARE}
                     </button>
                   )}
                 </div>

@@ -39,15 +39,19 @@ function RecurringBillsSubSection({
   const [collapsed, setCollapsed] = useState(false)
   const [confirming, setConfirming] = useState<Set<string>>(new Set())
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [pendingConfirmBill, setPendingConfirmBill] = useState<RecurringBillOverview | null>(null)
 
   const payerBills = bills.filter((b) => b.viewer_is_payer)
   if (payerBills.length === 0) return null
 
   async function confirmMonth(bill: RecurringBillOverview) {
+    setPendingConfirmBill(null)
     setConfirming((prev) => new Set(prev).add(bill.recurring_expense_id))
     setErrors((prev) => ({ ...prev, [bill.recurring_expense_id]: '' }))
     try {
-      await apiClient.post(`/api/finances/recurring/${bill.recurring_expense_id}/confirm`)
+      await apiClient.post(`/api/finances/recurring/${bill.recurring_expense_id}/confirm`, {
+        household_id: householdId,
+      })
       onChanged()
     } catch (err) {
       setErrors((prev) => ({ ...prev, [bill.recurring_expense_id]: getErrorMessage(err) }))
@@ -60,109 +64,165 @@ function RecurringBillsSubSection({
     }
   }
 
+  function handleLogMonthClick(bill: RecurringBillOverview) {
+    const unreportedNonPayers = bill.members.filter(
+      (m) => !m.is_payer && !m.self_reported && m.is_settled !== true,
+    )
+    if (unreportedNonPayers.length > 0) {
+      setPendingConfirmBill(bill)
+    } else {
+      confirmMonth(bill)
+    }
+  }
+
   return (
-    <div className="rounded-2xl bg-[#1c1c24] ring-1 ring-indigo-500/15 overflow-hidden mb-3">
-      <button
-        type="button"
-        onClick={() => setCollapsed((v) => !v)}
-        className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-white/5 hover:bg-white/3 transition-colors"
-      >
-        <span className="flex items-center gap-1.5 flex-1">
-          <ArrowPathIcon className="h-[11px] w-[11px] text-indigo-400" />
-          <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wide">
-            {FINANCES.OVERVIEW.RECURRING_SUBSECTION_TITLE}
-          </span>
-        </span>
-        {collapsed ? (
-          <ChevronDownIcon className="h-[11px] w-[11px] text-white/30" />
-        ) : (
-          <ChevronUpIcon className="h-[11px] w-[11px] text-white/30" />
-        )}
-      </button>
-
-      {!collapsed && payerBills.map((bill) => {
-        const isConfirming = confirming.has(bill.recurring_expense_id)
-        const isLogged = bill.cycle_status === 'logged'
-        const err = errors[bill.recurring_expense_id]
-        const nonPayerMembers = bill.members.filter((m) => !m.is_payer)
-        const allSettled = isLogged && nonPayerMembers.every((m) => m.is_settled === true)
-
-        return (
-          <div key={bill.recurring_expense_id} className="border-b border-white/5 last:border-0">
-            {/* Bill header */}
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 bg-green-500/5">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate">{bill.description}</p>
-                <p className="text-xs text-white/40">
-                  {FINANCES.OVERVIEW.RECURRING_DUE(bill.due_day_of_month)}
-                  {' · '}
-                  {FINANCES.OVERVIEW.COLLECT_FROM_ROOMMATES}
-                </p>
-                {err && <p className="text-xs text-red-400 mt-0.5">{err}</p>}
-              </div>
-              <span className="text-sm font-mono font-semibold text-green-400 shrink-0">
-                +${bill.total_amount.toFixed(2)}
-              </span>
-              {allSettled ? (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 shrink-0">
-                  {FINANCES.OVERVIEW.SETTLED_BADGE}
-                </span>
-              ) : !isLogged ? (
-                <button
-                  type="button"
-                  onClick={() => confirmMonth(bill)}
-                  disabled={isConfirming}
-                  className="text-xs font-medium text-indigo-400 enabled:hover:text-indigo-300 transition-colors disabled:opacity-50 shrink-0"
-                >
-                  {isConfirming ? FINANCES.OVERVIEW.CONFIRMING : FINANCES.OVERVIEW.CONFIRM_MONTH_SHORT}
-                </button>
-              ) : (
-                <span className="text-xs text-amber-400/80 shrink-0">
-                  {FINANCES.OVERVIEW.OPEN_BADGE}
-                </span>
+    <>
+      {pendingConfirmBill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-[#1c1c24] ring-1 ring-white/10 p-5 flex flex-col gap-4">
+            <p className="text-sm font-semibold text-white">
+              {FINANCES.OVERVIEW.LOG_MONTH_MODAL_TITLE}
+            </p>
+            <p className="text-sm text-white/60">
+              {FINANCES.OVERVIEW.LOG_MONTH_MODAL_BODY(
+                pendingConfirmBill.members
+                  .filter((m) => !m.is_payer && !m.self_reported && m.is_settled !== true)
+                  .map((m) => m.member_name)
+                  .join(', '),
               )}
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setPendingConfirmBill(null)}
+                className="text-sm text-white/50 hover:text-white/80 transition-colors"
+              >
+                {FINANCES.OVERVIEW.LOG_MONTH_MODAL_CANCEL}
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmMonth(pendingConfirmBill)}
+                className="text-sm font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+              >
+                {FINANCES.OVERVIEW.LOG_MONTH_MODAL_PROCEED}
+              </button>
             </div>
-
-            {/* Per-member avatar rows */}
-            {nonPayerMembers.map((member) => {
-              const isPending = !isLogged
-              const isSettled = isLogged && member.is_settled === true
-              const isAwaiting = isLogged && member.is_settled === false
-
-              return (
-                <div
-                  key={member.member_id}
-                  className="flex items-center gap-3 px-5 py-2.5 border-b border-white/5 last:border-0"
-                >
-                  <div className="flex items-center justify-center w-7 h-7 rounded-full bg-green-500/20 text-green-400 text-xs font-semibold shrink-0">
-                    {member.member_name.charAt(0).toUpperCase()}
-                  </div>
-                  <span className="flex-1 text-sm text-white">{member.member_name}</span>
-                  <span className="text-sm font-medium text-green-400 shrink-0">
-                    ${member.share_amount.toFixed(2)}
-                  </span>
-                  {isSettled && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 shrink-0">
-                      {FINANCES.OVERVIEW.SETTLED_BADGE}
-                    </span>
-                  )}
-                  {isAwaiting && (
-                    <span className="text-xs text-amber-400/80 shrink-0">
-                      {FINANCES.OVERVIEW.RECURRING_MEMBER_AWAITING}
-                    </span>
-                  )}
-                  {isPending && (
-                    <span className="text-xs text-white/30 shrink-0">
-                      {FINANCES.OVERVIEW.RECURRING_MEMBER_PENDING}
-                    </span>
-                  )}
-                </div>
-              )
-            })}
           </div>
-        )
-      })}
-    </div>
+        </div>
+      )}
+
+      <div className="rounded-2xl bg-[#1c1c24] ring-1 ring-indigo-500/15 overflow-hidden mb-3">
+        <button
+          type="button"
+          onClick={() => setCollapsed((v) => !v)}
+          className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-white/5 hover:bg-white/3 transition-colors"
+        >
+          <span className="flex items-center gap-1.5 flex-1">
+            <ArrowPathIcon className="h-[11px] w-[11px] text-indigo-400" />
+            <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wide">
+              {FINANCES.OVERVIEW.RECURRING_SUBSECTION_TITLE}
+            </span>
+          </span>
+          {collapsed ? (
+            <ChevronDownIcon className="h-[11px] w-[11px] text-white/30" />
+          ) : (
+            <ChevronUpIcon className="h-[11px] w-[11px] text-white/30" />
+          )}
+        </button>
+
+        {!collapsed && payerBills.map((bill) => {
+          const isConfirming = confirming.has(bill.recurring_expense_id)
+          const isLogged = bill.cycle_status === 'logged'
+          const err = errors[bill.recurring_expense_id]
+          const nonPayerMembers = bill.members.filter((m) => !m.is_payer)
+          const allSettled = isLogged && nonPayerMembers.every((m) => m.is_settled === true)
+
+          return (
+            <div key={bill.recurring_expense_id} className="border-b border-white/5 last:border-0">
+              {/* Bill header */}
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 bg-green-500/5">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">{bill.description}</p>
+                  <p className="text-xs text-white/40">
+                    {FINANCES.OVERVIEW.RECURRING_DUE(bill.due_day_of_month)}
+                    {' · '}
+                    {FINANCES.OVERVIEW.COLLECT_FROM_ROOMMATES}
+                  </p>
+                  {err && <p className="text-xs text-red-400 mt-0.5">{err}</p>}
+                </div>
+                <span className="text-sm font-mono font-semibold text-green-400 shrink-0">
+                  +${bill.total_amount.toFixed(2)}
+                </span>
+                {allSettled ? (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 shrink-0">
+                    {FINANCES.OVERVIEW.SETTLED_BADGE}
+                  </span>
+                ) : !isLogged ? (
+                  <button
+                    type="button"
+                    onClick={() => handleLogMonthClick(bill)}
+                    disabled={isConfirming}
+                    className="text-xs font-medium text-indigo-400 enabled:hover:text-indigo-300 transition-colors disabled:opacity-50 shrink-0"
+                  >
+                    {isConfirming ? FINANCES.OVERVIEW.LOGGING_MONTH : FINANCES.OVERVIEW.CONFIRM_MONTH_SHORT}
+                  </button>
+                ) : (
+                  <span className="text-xs text-amber-400/80 shrink-0">
+                    {FINANCES.OVERVIEW.OPEN_BADGE}
+                  </span>
+                )}
+              </div>
+
+              {/* Per-member avatar rows */}
+              {nonPayerMembers.map((member) => {
+                const isPending = !isLogged && !member.self_reported
+                const isPrePaid = !isLogged && member.self_reported
+                const isSettled = isLogged && member.is_settled === true
+                const isAwaiting = isLogged && member.is_settled === false
+
+                return (
+                  <div
+                    key={member.member_id}
+                    className="flex items-center gap-3 px-5 py-2.5 border-b border-white/5 last:border-0"
+                  >
+                    <div className="flex items-center justify-center w-7 h-7 rounded-full bg-green-500/20 text-green-400 text-xs font-semibold shrink-0">
+                      {member.member_name.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="flex-1 text-sm text-white">{member.member_name}</span>
+                    <span className="text-sm font-medium text-green-400 shrink-0">
+                      ${member.share_amount.toFixed(2)}
+                    </span>
+                    {isSettled && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 shrink-0">
+                        {FINANCES.OVERVIEW.SETTLED_BADGE}
+                      </span>
+                    )}
+                    {isAwaiting && (
+                      <span className="text-xs text-amber-400/80 shrink-0">
+                        {FINANCES.OVERVIEW.RECURRING_MEMBER_AWAITING}
+                      </span>
+                    )}
+                    {isPrePaid && (
+                      <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
+                          <path d="M20 6 9 17l-5-5" />
+                        </svg>
+                        {FINANCES.OVERVIEW.PRE_PAID_BADGE}
+                      </span>
+                    )}
+                    {isPending && (
+                      <span className="text-xs text-white/30 shrink-0">
+                        {FINANCES.OVERVIEW.RECURRING_MEMBER_PENDING}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })}
+      </div>
+    </>
   )
 }
 
@@ -173,6 +233,7 @@ export default function OwedToYouSection({ items, recurringBills, householdId, o
   const hasRecurring = recurringBills.some((b) => b.viewer_is_payer)
   const hasRegular = items.length > 0
 
+  // No items and no recurring expenses
   if (!hasRecurring && !hasRegular) {
     return (
       <div className="rounded-2xl bg-[#1c1c24] px-5 py-8 text-center">
