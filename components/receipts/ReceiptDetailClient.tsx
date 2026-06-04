@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { ROUTES } from '@/lib/constants/routes'
 import { RECEIPTS, GUESTS } from '@/locales/en'
@@ -95,11 +96,15 @@ export default function ReceiptDetailClient({ receipt, householdId }: ReceiptDet
             </button>
             {imageOpen && (
               <div className="px-4 pb-4 border-t border-white/5 pt-3 flex flex-col gap-3">
-                <img
-                  src={receipt.imageUrl}
-                  alt={receipt.merchantName}
-                  className="w-full object-contain max-h-96 rounded-lg"
-                />
+                <div className="relative w-full max-h-96 min-h-[12rem] rounded-lg overflow-hidden">
+                  <Image
+                    src={receipt.imageUrl}
+                    alt={receipt.merchantName}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 640px"
+                    className="object-contain"
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => downloadReceiptImage(receipt.imageUrl!, receipt.merchantName)}

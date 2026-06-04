@@ -1,6 +1,6 @@
 'use client'
 
-import { RECEIPTS, GUESTS } from '@/locales/en'
+import { RECEIPTS } from '@/locales/en'
 import AddParticipantsControl from '@/components/receipts/AddParticipantsControl'
 import type { LineItemConfig } from '@/lib/types/receipts'
 import type { HouseholdGuest } from '@/lib/types/guests'

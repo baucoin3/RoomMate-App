@@ -94,7 +94,13 @@ export default function UploadStep({
 
       {previewUrl && (
         <div className="relative w-full rounded-xl overflow-hidden border border-white/10">
-          <img src={previewUrl} alt="Receipt preview" className="w-full object-contain max-h-72" />
+          {/* Blob preview before upload — next/image does not support object URLs */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={previewUrl}
+            alt={RECEIPTS.ACTIONS.PREVIEW_IMAGE_ALT}
+            className="w-full object-contain max-h-72"
+          />
           {!uploading && (
             <button
               type="button"

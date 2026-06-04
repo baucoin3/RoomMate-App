@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { RECIPES } from '@/locales/en'
 import { ROUTES } from '@/lib/constants/routes'
@@ -17,18 +16,6 @@ interface RecipesClientProps {
   initialRecipes: Recipe[]
   initialTags: RecipeTag[]
   error: string | null
-}
-
-function SkeletonCard() {
-  return (
-    <div className="rounded-xl overflow-hidden border border-[--color-border-secondary]">
-      <div className="aspect-[4/3] w-full bg-[--color-background-secondary] animate-pulse" />
-      <div className="px-3.5 py-3 flex flex-col gap-2">
-        <div className="h-3.5 bg-[--color-background-secondary] animate-pulse rounded w-3/4" />
-        <div className="h-3 bg-[--color-background-secondary] animate-pulse rounded w-1/2" />
-      </div>
-    </div>
-  )
 }
 
 export default function RecipesClient({

@@ -79,7 +79,7 @@ export async function POST(request: Request) {
 
     const hasGuestSplits = body.splits.some((s) => s.guest_id)
     if (hasGuestSplits && data?.expense_id) {
-      void sendGuestSplitEmails(supabase, data.expense_id, body.household_id)
+      void sendGuestSplitEmails(supabase, data.expense_id)
     }
 
     return NextResponse.json({ data }, { status: 201 })

@@ -65,7 +65,6 @@ async function sendEmail(payload: GuestEmailPayload): Promise<void> {
 export async function sendGuestSplitEmails(
   supabase: SupabaseClient,
   expenseId: string,
-  householdId: string,
 ): Promise<void> {
   try {
     const { data: expense, error: expenseErr } = await supabase

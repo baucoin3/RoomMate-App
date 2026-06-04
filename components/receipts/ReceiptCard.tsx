@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { ROUTES } from '@/lib/constants/routes'
 import type { ReceiptLedgerItem } from '@/lib/types/receipts'
@@ -24,12 +25,14 @@ export default function ReceiptCard({ receipt, householdId }: ReceiptCardProps) 
   return (
     <Link href={ROUTES.RECEIPT_DETAIL(householdId, receipt.id)} className="block">
       <div className="bg-[#1c1c24] border border-white/5 rounded-xl p-4 flex gap-4 hover:border-white/10 hover:ring-2 hover:ring-primary/40 cursor-pointer transition-all">
-        <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-white/5 flex items-center justify-center">
+        <div className="relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-white/5 flex items-center justify-center">
           {receipt.image_url ? (
-            <img
+            <Image
               src={receipt.image_url}
               alt={receipt.merchant_name ?? 'Receipt'}
-              className="w-full h-full object-cover"
+              fill
+              sizes="64px"
+              className="object-cover"
             />
           ) : (
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-8 h-8 text-white/20" aria-hidden="true">

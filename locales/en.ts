@@ -503,6 +503,7 @@ export const RECEIPTS = {
     RETAKE: 'Use a different photo',
     RETRY_UPLOAD: 'Try again',
     REMOVE_IMAGE: 'Remove image',
+    PREVIEW_IMAGE_ALT: 'Receipt preview',
     CONFIGURE_ITEMS: 'Configure items',
     CONFIGURE_ITEM: 'Configure',
     CONFIGURE_ITEMS_HINT: (n: number) => `${n} item${n === 1 ? '' : 's'} need${n === 1 ? 's' : ''} confirmation`,

@@ -8,7 +8,6 @@ import RecipesCard from '@/components/dashboard/RecipesCard'
 import RecentActivityFeed from '@/components/dashboard/RecentActivityFeed'
 import HouseholdCalendar from '@/components/dashboard/HouseholdCalendar'
 import {
-  QuickActionsSkeleton,
   ActivitySkeleton,
   CalendarSkeleton,
 } from '@/components/dashboard/DashboardSkeleton'
