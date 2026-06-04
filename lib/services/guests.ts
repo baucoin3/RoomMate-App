@@ -159,7 +159,7 @@ export async function syncGuestGroupMembers(
   const targetIds = new Set(guestIds)
 
   const toAdd = guestIds.filter((id) => !existingIds.has(id))
-  const toRemove = [...existingIds].filter((id) => !targetIds.has(id))
+  const toRemove = Array.from(existingIds).filter((id) => !targetIds.has(id))
 
   if (toRemove.length > 0) {
     const { error } = await supabase
