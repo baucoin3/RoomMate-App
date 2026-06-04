@@ -108,10 +108,10 @@ async function fetchCalendarData(supabase: SupabaseClient, householdId: string):
   try {
     const now = new Date()
     const { data } = await getCalendarData(supabase, householdId, now.getFullYear(), now.getMonth())
-    return data ?? { meal_logs: [], bill_dots: [], receipt_dots: [] }
+    return data ?? { meal_logs: [], bill_dots: [], receipt_dots: [], custom_events: [] }
   } catch (err) {
     console.error('[dashboard/calendarData]', err)
-    return { meal_logs: [], bill_dots: [], receipt_dots: [] }
+    return { meal_logs: [], bill_dots: [], receipt_dots: [], custom_events: [] }
   }
 }
 

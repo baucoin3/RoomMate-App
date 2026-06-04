@@ -436,6 +436,14 @@ export default function ScanReceiptWizard({
     }
   }
 
+  function handleCapturedFile(file: File) {
+    setFileError('')
+    setAnalysisError('')
+    setSelectedFile(file)
+    setPreviewUrl(URL.createObjectURL(file))
+    uploadFile(file)
+  }
+
   function handleAnalyze() {
     if (imageUrl) enterStep2(imageUrl)
   }
@@ -700,6 +708,7 @@ export default function ScanReceiptWizard({
           onRetryUpload={() => selectedFile && uploadFile(selectedFile)}
           onAnalyze={handleAnalyze}
           onSkipToManual={enterManualStep2}
+          onCapturedFile={handleCapturedFile}
         />
       )}
 

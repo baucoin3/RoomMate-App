@@ -13,6 +13,7 @@ interface RecipeCardProps {
   image_url: string | null
   category_tag: string | null
   cookTimeLabel: string | null
+  ingredients: { name: string }[]
 }
 
 export default function RecipeCard({
@@ -23,6 +24,7 @@ export default function RecipeCard({
   image_url,
   category_tag,
   cookTimeLabel,
+  ingredients,
 }: RecipeCardProps) {
   const placeholder = RECIPE_IMAGE_PLACEHOLDERS[id.charCodeAt(0) % 5]
   const PlaceholderIcon = placeholder.Icon
@@ -94,7 +96,12 @@ export default function RecipeCard({
 
       {/* 3-dot context menu — outside the Link so clicks don't navigate */}
       <div className="absolute top-2 right-2 z-10">
-        <RecipeCardMenu recipeId={id} householdId={householdId} />
+        <RecipeCardMenu
+          recipeId={id}
+          recipeName={name}
+          householdId={householdId}
+          ingredients={ingredients}
+        />
       </div>
     </div>
   )

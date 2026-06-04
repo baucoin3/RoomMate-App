@@ -174,6 +174,10 @@ export const SHOPPING = {
     DELETE_CHECKED: 'Delete checked',
     CLEAR_ALL: 'Clear all',
     CLEAR_ALL_CONFIRM: (name: string) => `Clear all items from "${name}"?`,
+    ADD_TO_LIST: 'Add to shopping list',
+    ADD_ITEMS: 'Add items',
+    ADDING_ITEMS: 'Adding…',
+    ITEMS_ADDED: 'Added!',
   },
   LABELS: {
     LIST_NAME: 'List name',
@@ -181,6 +185,9 @@ export const SHOPPING = {
     OWNER_TYPE: 'List type',
     OWNER_MINE: 'Mine',
     OWNER_HOUSEHOLD: 'Household',
+    SELECT_LIST_LABEL: 'Select list',
+    INGREDIENTS_LABEL: 'Ingredients',
+    ADD_TO_LIST_TITLE: (recipe: string) => `Add ingredients — ${recipe}`,
   },
   ERRORS: {
     LOAD: 'Failed to load shopping lists.',
@@ -194,6 +201,10 @@ export const SHOPPING = {
     HOUSEHOLD_REQUIRED: 'Household ID is required.',
     NOT_FOUND: 'List not found.',
     FORBIDDEN: 'You do not have access to this list.',
+    BATCH_ADD_FAILED: 'Failed to add items.',
+    ALL_ALREADY_IN_LIST: 'All selected items are already in this list.',
+    ITEMS_SKIPPED: (n: number) => `${n} item${n === 1 ? '' : 's'} already in this list — skipped.`,
+    NO_LISTS_FOR_RECIPE: 'No shopping lists. Create one first.',
   },
 } as const
 
@@ -379,6 +390,7 @@ export const RECIPES = {
     INGREDIENT_EXCLUDE_LABEL: 'Exclude ingredient',
     STEP_EXCLUDE_LABEL: 'Exclude step',
     RESET_EXCLUDED: 'Reset',
+    ADD_TO_LIST: 'Add to list',
   },
   FORM: {
     NAME_LABEL: 'Recipe name',
@@ -400,7 +412,7 @@ export const RECIPES = {
     INGREDIENT_NAME_PLACEHOLDER: 'e.g. Ripe bananas',
     INGREDIENT_QTY_PLACEHOLDER: '3 large',
     INGREDIENT_REMOVE_LABEL: 'Remove ingredient',
-    ADD_INGREDIENT: '+ Add ingredient',
+    ADD_INGREDIENT: 'Add ingredient',
     STEPS_HEADING: 'Instructions',
     STEP_PLACEHOLDER: 'Describe this step…',
     STEP_REMOVE_LABEL: 'Remove step',
@@ -499,6 +511,16 @@ export const RECEIPTS = {
     SKIP_UPLOAD: 'Enter manually instead',
     ADD_LINE_ITEM: '+ Add item',
     REMOVE_LINE_ITEM: 'Remove item',
+  },
+  CAMERA: {
+    TAB_CAMERA: 'Camera',
+    TAB_UPLOAD: 'Upload',
+    CAPTURE: 'Capture receipt',
+    FLIP_CAMERA: 'Flip camera',
+    PERMISSION_DENIED: 'Camera access denied — allow camera in browser settings.',
+    NOT_SUPPORTED: 'Camera not supported in this browser.',
+    STREAM_ERROR: 'Could not start camera.',
+    STARTING: 'Starting camera…',
   },
   SPLITS: {
     GUESTS_ON_RECEIPT: 'Guests on this receipt',
@@ -706,6 +728,7 @@ export const MEAL_LOGS = {
   NO_LOGS: 'Not made yet',
   MENU_EDIT: 'Edit',
   MENU_MARK_MADE: 'Mark as Made Today',
+  MENU_ADD_TO_LIST: 'Add to shopping list',
 } as const
 
 export const HOUSEHOLD_DASHBOARD = {
@@ -749,6 +772,16 @@ export const HOUSEHOLD_DASHBOARD = {
     GROCERY_VISIT_UNKNOWN: 'Grocery run',
     MORE_EVENTS: (n: number) => `+${n} more`,
     LOADING: 'Loading…',
+    ADD_EVENT: 'Add event',
+    EVENT_TITLE_PLACEHOLDER: 'Title',
+    EVENT_NOTE_PLACEHOLDER: 'Note (optional)',
+    ADD_EVENT_BUTTON: 'Add',
+    ADDING_EVENT: 'Adding…',
+    NO_EVENTS_TODAY: 'No reminders yet',
+    DELETE_EVENT: 'Delete reminder',
+    EVENT_TITLE_REQUIRED: 'Title is required',
+    EVENT_TITLE_TOO_LONG: 'Title must be 100 characters or fewer',
+    CUSTOM_EVENT_DOT_LABEL: 'Reminder',
   },
   ERRORS: {
     LOAD: 'Failed to load dashboard data.',

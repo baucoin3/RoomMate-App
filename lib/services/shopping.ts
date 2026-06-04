@@ -81,6 +81,51 @@ export async function clearAllItems(
 }
 
 /**
+ * Insert items into a list, skipping any whose name already exists (case-insensitive).
+ * Returns inserted items and the count of duplicates that were skipped.
+ */
+export async function addItemsToList(
+  supabase: SupabaseClient,
+  listId: string,
+  items: { name: string; quantity?: number | null; unit?: string | null }[],
+): Promise<{ data: ShoppingListItem[]; skipped: number; error: string | null }> {
+  const { data: existing, error: fetchError } = await supabase
+    .from('shopping_list_items')
+    .select('name')
+    .eq('shopping_list_id', listId)
+
+  if (fetchError) return { data: [], skipped: 0, error: fetchError.message }
+
+  const existingNames = new Set(
+    (existing as { name: string }[]).map((row) => row.name.toLowerCase()),
+  )
+
+  const newItems = items.filter((item) => !existingNames.has(item.name.toLowerCase()))
+  const skipped = items.length - newItems.length
+
+  if (newItems.length === 0) {
+    return { data: [], skipped, error: null }
+  }
+
+  const rows = newItems.map((item) => ({
+    shopping_list_id: listId,
+    name: item.name,
+    quantity: item.quantity ?? null,
+    unit: item.unit ?? null,
+    is_checked: false,
+  }))
+
+  const { data, error } = await supabase
+    .from('shopping_list_items')
+    .insert(rows)
+    .select('id, shopping_list_id, name, quantity, unit, is_checked, created_at')
+
+  if (error) return { data: [], skipped, error: error.message }
+
+  return { data: data as ShoppingListItem[], skipped, error: null }
+}
+
+/**
  * Fetch all items for a given list, ordered by is_checked ASC, created_at ASC.
  */
 export async function getItemsForList(

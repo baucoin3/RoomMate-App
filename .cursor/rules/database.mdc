@@ -6,6 +6,8 @@ alwaysApply: false
 
 # Database Standards (Supabase / Postgres)
 
+**Schema, RLS matrix, policies, functions, storage:** `database-schema.mdc` (always applied). RLS helper: `is_household_member(uuid)` — used in policies, not called from app code.
+
 ## Never Call the DB Inside a Loop
 
 Accumulate data first, then send a single query. This applies even when using `Promise.all` — if the number of items is dynamic, batch at the DB layer instead.

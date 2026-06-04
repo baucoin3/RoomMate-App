@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MealLog } from '@/lib/types/recipe'
-import type { CalendarData, CalendarReceiptDot } from '@/lib/types/dashboard'
+import type { CalendarData, CalendarCustomEvent, CalendarReceiptDot } from '@/lib/types/dashboard'
 
 export async function createMealLog(
   supabase: SupabaseClient,
@@ -105,7 +105,7 @@ export async function getCalendarData(
   const lastDayDate = new Date(year, month + 1, 0)
   const lastDay = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDayDate.getDate()).padStart(2, '0')}`
 
-  const [logsResult, billsResult, receiptsResult] = await Promise.all([
+  const [logsResult, billsResult, receiptsResult, eventsResult] = await Promise.all([
     supabase
       .from('meal_logs')
       .select('made_at, recipes(name), household_members(nickname)')
@@ -127,6 +127,14 @@ export async function getCalendarData(
       .not('receipt_date', 'is', null)
       .gte('receipt_date', firstDay)
       .lte('receipt_date', lastDay),
+
+    supabase
+      .from('household_events')
+      .select('id, date, title, note')
+      .eq('household_id', householdId)
+      .gte('date', firstDay)
+      .lte('date', lastDay)
+      .order('date', { ascending: true }),
   ])
 
   if (logsResult.error) return { data: null, error: logsResult.error.message }
@@ -149,5 +157,12 @@ export async function getCalendarData(
     merchant_name: row.merchant_name as string | null,
   }))
 
-  return { data: { meal_logs, bill_dots, receipt_dots }, error: null }
+  const custom_events: CalendarCustomEvent[] = (eventsResult.data ?? []).map((row) => ({
+    id: row.id as string,
+    date: row.date as string,
+    title: row.title as string,
+    note: row.note as string | null,
+  }))
+
+  return { data: { meal_logs, bill_dots, receipt_dots, custom_events }, error: null }
 }
