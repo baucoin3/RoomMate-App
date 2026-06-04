@@ -221,7 +221,8 @@ export async function getOweSummary(
       .eq('expenses.household_id', householdId)
       .eq('expenses.paid_by_member_id', currentMemberId)
       .neq('household_member_id', currentMemberId)
-      .eq('is_settled', false),
+      .eq('is_settled', false)
+      .is('expenses.recurring_expense_id', null),
 
     supabase
       .from('expense_splits')
@@ -241,7 +242,8 @@ export async function getOweSummary(
       .eq('expenses.household_id', householdId)
       .eq('expenses.paid_by_member_id', currentMemberId)
       .not('guest_id', 'is', null)
-      .eq('is_settled', false),
+      .eq('is_settled', false)
+      .is('expenses.recurring_expense_id', null),
 
     supabase
       .from('expense_splits')
@@ -263,7 +265,8 @@ export async function getOweSummary(
       .eq('household_member_id', currentMemberId)
       .neq('expenses.paid_by_member_id', currentMemberId)
       .not('expenses.paid_by_member_id', 'is', null)
-      .eq('is_settled', false),
+      .eq('is_settled', false)
+      .is('expenses.recurring_expense_id', null),
 
     supabase
       .from('expense_splits')
@@ -284,7 +287,8 @@ export async function getOweSummary(
       .eq('expenses.household_id', householdId)
       .eq('household_member_id', currentMemberId)
       .not('expenses.paid_by_guest_id', 'is', null)
-      .eq('is_settled', false),
+      .eq('is_settled', false)
+      .is('expenses.recurring_expense_id', null),
   ])
 
   if (owedMembersRes.error) return { data: null, error: owedMembersRes.error.message }
@@ -530,6 +534,16 @@ export async function getRecurringBillsOverview(
 
   if (expenseErr) return { data: null, error: expenseErr.message }
 
+  const { data: preReportRows } = await supabase
+    .from('recurring_payment_reports')
+    .select('recurring_expense_id, household_member_id, cycle_due_date')
+    .in('recurring_expense_id', recurringIds)
+
+  const preReportSet = new Set<string>(
+    ((preReportRows ?? []) as { recurring_expense_id: string; household_member_id: string; cycle_due_date: string }[])
+      .map((r) => `${r.recurring_expense_id}:${r.household_member_id}:${r.cycle_due_date}`),
+  )
+
   type ExpenseSplitRow = {
     id: string
     household_member_id: string
@@ -566,10 +580,11 @@ export async function getRecurringBillsOverview(
         const shareAmount = roundAmount(Number(s.amount) || roundAmount((Number(s.percentage) / 100) * Number(r.amount)))
         const isPayer = s.household_member_id === r.paid_by_member_id
         const isViewer = s.household_member_id === currentMemberId
+        const selfReported = preReportSet.has(`${r.id}:${s.household_member_id}:${cycleDueDate}`)
 
         if (viewerIsPayer && !isPayer) {
           viewerCollectTotal += shareAmount
-          viewerCollectUnsettledTotal += shareAmount
+          if (!selfReported) viewerCollectUnsettledTotal += shareAmount
         } else if (!viewerIsPayer && isViewer) {
           viewerOwesAmount += shareAmount
         }
@@ -582,6 +597,7 @@ export async function getRecurringBillsOverview(
           is_viewer: isViewer,
           is_settled: null,
           split_id: null,
+          self_reported: selfReported,
         }
       })
     } else {
@@ -597,6 +613,7 @@ export async function getRecurringBillsOverview(
         const isPayer = s.household_member_id === r.paid_by_member_id
         const isViewer = s.household_member_id === currentMemberId
         const isSettled = expenseSplit?.is_settled ?? (isPayer ? true : false)
+        const selfReported = preReportSet.has(`${r.id}:${s.household_member_id}:${cycleDueDate}`)
 
         if (viewerIsPayer && !isPayer) {
           viewerCollectTotal += shareAmount
@@ -613,6 +630,7 @@ export async function getRecurringBillsOverview(
           is_viewer: isViewer,
           is_settled: isSettled,
           split_id: expenseSplit?.id ?? null,
+          self_reported: selfReported,
         }
       })
     }
@@ -688,6 +706,10 @@ export async function confirmRecurringExpenseForCycle(
     return { data: null, error: FINANCES.ERRORS.FORBIDDEN, status: 403 }
   }
 
+  if (memberId !== rec.paid_by_member_id) {
+    return { data: null, error: FINANCES.ERRORS.FORBIDDEN, status: 403 }
+  }
+
   const cycleDueDate = getCurrentCycleDueDate(rec.due_day_of_month)
 
   const { data: existingExpenses, error: existingErr } = await supabase
@@ -727,6 +749,16 @@ export async function confirmRecurringExpenseForCycle(
     return { data: null, error: expenseErr?.message ?? FINANCES.ERRORS.CONFIRM_FAILED, status: 400 }
   }
 
+  const { data: preReports } = await supabase
+    .from('recurring_payment_reports')
+    .select('household_member_id')
+    .eq('recurring_expense_id', recurringId)
+    .eq('cycle_due_date', cycleDueDate)
+
+  const preReportedMemberIds = new Set(
+    ((preReports ?? []) as { household_member_id: string }[]).map((r) => r.household_member_id),
+  )
+
   const splitRows = rec.recurring_expense_splits.map((s) => {
     const calculatedAmount =
       s.amount != null && Number(s.amount) > 0
@@ -738,7 +770,9 @@ export async function confirmRecurringExpenseForCycle(
       household_member_id: s.household_member_id,
       percentage_override: s.percentage,
       calculated_amount: calculatedAmount,
-      is_settled: s.household_member_id === rec.paid_by_member_id,
+      is_settled:
+        s.household_member_id === rec.paid_by_member_id ||
+        preReportedMemberIds.has(s.household_member_id),
     }
   })
 
@@ -749,6 +783,96 @@ export async function confirmRecurringExpenseForCycle(
   }
 
   return { data: { expense_id: expense.id }, error: null }
+}
+
+export async function reportRecurringSharePaid(
+  supabase: SupabaseClient,
+  recurringId: string,
+  householdId: string,
+  userId: string,
+): Promise<{ data: null; error: string | null; status?: number }> {
+  const memberId = await getMemberIdForUser(supabase, householdId, userId)
+  if (!memberId) {
+    return { data: null, error: FINANCES.ERRORS.FORBIDDEN, status: 403 }
+  }
+
+  const { data: recurring, error: recurringErr } = await supabase
+    .from('recurring_expenses')
+    .select('id, household_id, paid_by_member_id, due_day_of_month')
+    .eq('id', recurringId)
+    .eq('household_id', householdId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (recurringErr || !recurring) {
+    return { data: null, error: FINANCES.ERRORS.NOT_FOUND, status: 404 }
+  }
+
+  const { data: split } = await supabase
+    .from('recurring_expense_splits')
+    .select('id')
+    .eq('recurring_expense_id', recurringId)
+    .eq('household_member_id', memberId)
+    .maybeSingle()
+
+  if (!split) {
+    return { data: null, error: FINANCES.ERRORS.FORBIDDEN, status: 403 }
+  }
+
+  const cycleDueDate = getCurrentCycleDueDate(
+    (recurring as { due_day_of_month: number }).due_day_of_month,
+  )
+
+  type CycleExpenseRow = {
+    id: string
+    date: string
+    expense_splits: { household_member_id: string; is_settled: boolean }[]
+  }
+
+  const { data: cycleExpenses } = await supabase
+    .from('expenses')
+    .select('id, date, expense_splits ( household_member_id, is_settled )')
+    .eq('household_id', householdId)
+    .eq('recurring_expense_id', recurringId)
+
+  const cycleExpense = ((cycleExpenses ?? []) as unknown as CycleExpenseRow[]).find((e) =>
+    isDateInCycle(e.date, cycleDueDate),
+  )
+
+  if (cycleExpense) {
+    const memberSplit = cycleExpense.expense_splits.find((s) => s.household_member_id === memberId)
+    if (memberSplit?.is_settled === true) {
+      return { data: null, error: null }
+    }
+
+    const { error: settleErr } = await supabase
+      .from('expense_splits')
+      .update({ is_settled: true })
+      .eq('expense_id', cycleExpense.id)
+      .eq('household_member_id', memberId)
+
+    if (settleErr) {
+      return { data: null, error: settleErr.message, status: 400 }
+    }
+    return { data: null, error: null }
+  }
+
+  const { error: upsertErr } = await supabase
+    .from('recurring_payment_reports')
+    .upsert(
+      {
+        recurring_expense_id: recurringId,
+        household_member_id: memberId,
+        cycle_due_date: cycleDueDate,
+      },
+      { onConflict: 'recurring_expense_id,household_member_id,cycle_due_date' },
+    )
+
+  if (upsertErr) {
+    return { data: null, error: upsertErr.message, status: 400 }
+  }
+
+  return { data: null, error: null }
 }
 
 export async function settleRecurringMemberForCycle(

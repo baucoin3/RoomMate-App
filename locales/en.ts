@@ -268,6 +268,16 @@ export const FINANCES = {
     RECURRING_DUE: (day: number) => `Due the ${day}${day === 1 ? 'st' : day === 2 ? 'nd' : day === 3 ? 'rd' : 'th'}`,
     COLLAPSE_RECURRING: 'Collapse',
     EXPAND_RECURRING: 'Recurring',
+    I_PAID_MY_SHARE: 'I paid my share',
+    REPORTING_PAID: 'Reporting…',
+    REPORTED_AWAITING_LOG: 'Reported — awaiting log',
+    PRE_PAID_BADGE: 'Paid',
+    LOGGING_MONTH: 'Logging…',
+    LOG_MONTH_MODAL_TITLE: 'Log this month?',
+    LOG_MONTH_MODAL_BODY: (names: string) =>
+      `${names} ${names.includes(',') ? "haven't" : "hasn't"} reported paying yet. You can still log — their share will show as open until they report.`,
+    LOG_MONTH_MODAL_PROCEED: 'Log anyway',
+    LOG_MONTH_MODAL_CANCEL: 'Cancel',
   },
   SETTINGS: {
     CATEGORIES_TITLE: 'Categories',

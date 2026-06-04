@@ -46,10 +46,17 @@ export default function OverviewTab({ householdId }: OverviewTabProps) {
         apiClient.get<{ data: SettledItem[] }>(`/api/finances/settled?householdId=${householdId}`),
         apiClient.get<{ data: ActivityItem[] }>(`/api/finances/activity?householdId=${householdId}`),
       ])
+      console.log(`\nn\ IN FINANCES FETCH all\n\n`)
+      console.log(`balancesRes.data.data: = ${JSON.stringify(balancesRes.data.data)}`)
+      console.log(`recurringRes.data.data: = ${JSON.stringify(recurringRes.data.data)}`)
+      console.log(`settledRes.data.data: = ${JSON.stringify(settledRes.data.data)}`)
+      console.log(`activityRes.data.data: = ${JSON.stringify(activityRes.data.data)}`)
+      console.log(`\n\n`)
       setOweSummary(balancesRes.data.data)
       setRecurringBills(recurringRes.data.data ?? [])
       setSettledItems(settledRes.data.data ?? [])
       setActivity(activityRes.data.data ?? [])
+      console.log(`the state owe Summary  = ${JSON.stringify(oweSummary)}`)
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
