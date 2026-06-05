@@ -165,6 +165,7 @@ export const SHOPPING = {
   },
   ACTIONS: {
     ADD_ITEM: 'Add item…',
+    ADD: 'Add',
     NEW_LIST: 'New list',
     CREATE: 'Create',
     CREATING: 'Creating…',
