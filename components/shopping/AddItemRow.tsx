@@ -124,6 +124,16 @@ export default function AddItemRow({ listId, householdId, onItemAdded }: AddItem
         {isSubmitting && (
           <span className="text-xs text-white/30">{SHOPPING.ACTIONS.CREATING}</span>
         )}
+        {!isSubmitting && inputValue.trim().length > 0 && (
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => void submitItem(inputValue)}
+            disabled={isSubmitting}
+            className="px-3 py-1 rounded-full text-xs font-medium bg-green-500 hover:bg-green-400 text-white transition-all disabled:opacity-50 shrink-0"
+          >
+            {SHOPPING.ACTIONS.ADD}
+          </button>
+        )}
       </div>
 
       {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
