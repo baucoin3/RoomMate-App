@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { AUTH, HOUSEHOLDS, ERRORS } from '@/locales/en'
-import { getHouseholdsForUser } from '@/lib/services/households'
+import { createHousehold, getHouseholdsForUser } from '@/lib/services/households'
 
 export async function GET() {
   try {
@@ -37,27 +37,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: AUTH.ERRORS.UNAUTHORIZED }, { status: 401 })
     }
 
-    const { data: household, error: householdError } = await supabase
-      .from('households')
-      .insert({ name: name.trim() })
-      .select('id, name, invite_code, created_at')
-      .single()
+    const nickname =
+      (user.user_metadata?.full_name as string | undefined)?.trim()
+      || user.email?.split('@')[0]
+      || 'Member'
 
-    if (householdError || !household) {
-      return NextResponse.json({ error: householdError?.message ?? HOUSEHOLDS.ERRORS.CREATE }, { status: 400 })
-    }
+    const { data, error } = await createHousehold(supabase, name, nickname)
+    if (error) return NextResponse.json({ error }, { status: 400 })
 
-    const nickname = (user.user_metadata?.full_name as string | undefined)?.trim() || user.email?.split('@')[0] || 'Member'
-    const { error: memberError } = await supabase
-      .from('household_members')
-      .insert({ household_id: household.id, user_id: user.id, is_rent_owner: true, nickname })
-
-    if (memberError) {
-      await supabase.from('households').delete().eq('id', household.id)
-      return NextResponse.json({ error: memberError.message ?? HOUSEHOLDS.ERRORS.CREATE }, { status: 400 })
-    }
-
-    return NextResponse.json({ data: { ...household, image_url: null, member_count: 1 } }, { status: 201 })
+    return NextResponse.json({ data }, { status: 201 })
   } catch {
     return NextResponse.json({ error: ERRORS.INTERNAL }, { status: 500 })
   }

@@ -253,4 +253,50 @@ Do not assume how many production-grade safeguards are needed until the user con
 
 ---
 
+## 13. Agentic Feature Development Workflow
+
+This is the standard process for all new features and bug fixes in this project.
+
+### Before writing any code
+
+1. `git pull origin main` — always start from latest.
+2. Confirm the branch name with the user before creating it. Suggest `feature/<kebab-case-description>` or `fix/<kebab-case-description>` based on the task.
+3. `git checkout -b <confirmed-branch-name>`
+
+### Context first, code second
+
+4. Read `CLAUDE.md`, then read all files relevant to the task.
+5. Output a brief plan: what you'll create, what you'll modify, which patterns you'll follow.
+6. **Wait for user confirmation before writing any code.**
+
+### Implement in phases
+
+7. Work in this order, pausing after each phase to summarize what was written and ask "continue to next phase?":
+   - **Phase 1 — Types & DB:** `lib/types/`, `locales/en.ts` additions, any schema/migration changes
+   - **Phase 2 — Services:** `lib/services/` business logic
+   - **Phase 3 — API routes:** thin controllers in `app/api/`
+   - **Phase 4 — UI:** components, hooks, pages
+
+### Self-review before handoff
+
+8. Before presenting the final summary, run a self-review checklist against every rule in this file:
+   - No `fetch()` in `app/(pages)/`, `components/`, or `hooks/`
+   - No `select('*')` in Supabase queries
+   - All user-facing strings in `locales/en.ts`
+   - No DB calls inside loops
+   - Every API route has a top-level `try/catch` with correct HTTP status
+   - No `any` types; all domain types in `lib/types/`
+   - Icons use inline SVG, not Tabler classes
+   - `ROUTES` constants used for all navigation
+   - Fix any violations found before proceeding.
+
+### Final handoff
+
+9. Present a human-readable summary: files added, files modified, new API routes, new locale keys, any schema changes needed.
+10. **Wait for explicit user approval** ("approved", "lgtm", "ship it", etc.) before touching git.
+11. On approval: `git add` → `git commit` (conventional commit message) → `git push origin <branch>`.
+12. On rejection or "start over": `git checkout main` → `git branch -D <branch-name>` → inform the user the branch was cleaned up.
+
+---
+
 Coding standards in this file mirror `.cursor/rules/` — keep both in sync when rules change.
