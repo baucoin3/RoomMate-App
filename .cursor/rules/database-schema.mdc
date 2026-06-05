@@ -69,7 +69,7 @@ Do **not** `ENABLE ROW LEVEL SECURITY` without policies — that blocks all acce
 | Name | Signature | Notes |
 |------|-----------|--------|
 | `is_household_member` | `(p_household_id uuid) → boolean` | RLS helper; SECURITY DEFINER |
-| `create_household` | `(p_name text) → json` | Atomically creates household + creator member; **not used in app** (see `app/api/households/route.ts` two-step insert) |
+| `create_household` | `(p_name text, p_nickname text DEFAULT NULL) → json` | Atomically creates household + creator member; used by `lib/services/households.ts` `createHousehold` via RPC |
 | `update_updated_at` | trigger fn | Sets `updated_at = now()` |
 
 **Trigger:** `recipes_updated_at` BEFORE UPDATE ON `recipes` → `update_updated_at()`.

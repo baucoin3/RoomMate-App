@@ -1,5 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { HouseholdWithMemberCount } from '@/lib/types/household'
+import {
+  isCreateHouseholdRpcResult,
+  type HouseholdWithMemberCount,
+} from '@/lib/types/household'
 import { HOUSEHOLDS } from '@/locales/en'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -41,6 +44,39 @@ export async function getHouseholdsForUser(
     .filter((h) => h.id !== '')
 
   return { data: households, error: null }
+}
+
+export async function createHousehold(
+  supabase: SupabaseClient,
+  name: string,
+  nickname: string,
+): Promise<{ data: HouseholdWithMemberCount | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('create_household', {
+    p_name: name.trim(),
+    p_nickname: nickname,
+  })
+
+  if (error) {
+    console.error('[createHousehold]', error)
+    return { data: null, error: HOUSEHOLDS.ERRORS.CREATE }
+  }
+
+  if (!isCreateHouseholdRpcResult(data)) {
+    console.error('[createHousehold] unexpected RPC payload', data)
+    return { data: null, error: HOUSEHOLDS.ERRORS.CREATE }
+  }
+
+  return {
+    data: {
+      id: data.id,
+      name: data.name,
+      invite_code: data.invite_code,
+      created_at: data.created_at,
+      image_url: null,
+      member_count: 1,
+    },
+    error: null,
+  }
 }
 
 export async function joinHouseholdByInviteCode(
