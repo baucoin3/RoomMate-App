@@ -151,7 +151,12 @@ export default function HouseholdShell({
         {/* Top strip */}
         <header className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
           <div>
-            <h1 className="text-base font-semibold text-white leading-tight">{householdName}</h1>
+            <Link
+              href={ROUTES.HOUSEHOLD(householdId)}
+              className="text-base font-semibold text-white leading-tight hover:text-white/80 transition-colors"
+            >
+              {householdName}
+            </Link>
             <p className="text-xs text-white/50 mt-0.5">{greeting}</p>
           </div>
           <div className="relative md:hidden" ref={mobileMenuRef}>

@@ -33,6 +33,7 @@ export function useCamera(active: boolean): UseCameraReturn {
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
+    if (videoRef.current) videoRef.current.srcObject = null
     setIsReady(false)
   }, [])
 
