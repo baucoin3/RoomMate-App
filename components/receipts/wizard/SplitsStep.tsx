@@ -45,7 +45,6 @@ interface SplitsStepProps {
   onReceiptGuestsChange: (guests: HouseholdGuest[]) => void
   onGuestCreated: (guest: HouseholdGuest) => void
   onConfirmLineItem: (index: number) => void
-  onAddAllToExpense: () => void
   onOpenModal: (index?: number) => void
   onBack: () => void
   onSave: () => void
@@ -76,7 +75,6 @@ export default function SplitsStep({
   onReceiptGuestsChange,
   onGuestCreated,
   onConfirmLineItem,
-  onAddAllToExpense,
   onOpenModal,
   onBack,
   onSave,
@@ -132,13 +130,6 @@ export default function SplitsStep({
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs text-white/50">{RECEIPTS.LABELS.LINE_ITEMS}</label>
-            <button
-              type="button"
-              onClick={onAddAllToExpense}
-              className="text-xs text-white/40 hover:text-white/70 transition-colors"
-            >
-              {RECEIPTS.ACTIONS.ADD_ALL_TO_EXPENSE}
-            </button>
           </div>
           <div className="flex flex-col gap-1.5">
             {lineItemConfigs.map((config, i) => {

@@ -1,8 +1,9 @@
 import { Suspense } from 'react'
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { ROUTES } from '@/lib/constants/routes'
-import { ERRORS } from '@/locales/en'
+import { ERRORS, NAV } from '@/locales/en'
 import { getDashboardData } from '@/lib/services/dashboard'
 import RecipesCard from '@/components/dashboard/RecipesCard'
 import RecentActivityFeed from '@/components/dashboard/RecentActivityFeed'
@@ -46,6 +47,12 @@ export default async function HouseholdHubPage({ params }: HouseholdHubPageProps
 
   return (
     <div className="flex flex-col gap-4 pt-1 pb-20 md:pb-4">
+      <Link
+        href={ROUTES.DASHBOARD}
+        className="self-start text-sm text-white/40 hover:text-white/70 transition-colors"
+      >
+        {NAV.BACK_TO_HOUSEHOLDS}
+      </Link>
       <Suspense fallback={<CalendarSkeleton />}>
         <HouseholdCalendar
           initialData={data.calendar}

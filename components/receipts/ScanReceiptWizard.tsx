@@ -20,7 +20,6 @@ import {
   firstUnconfiguredIndex,
   getDisplaySplitsForLineItem,
   hasValidSplitAssignment,
-  isLineItemReadyToSave,
   shouldCreateHouseholdItemOnSave,
   shouldUpsertAliasesOnSave,
   withConfiguredFlags,
@@ -543,14 +542,6 @@ export default function ScanReceiptWizard({
     )
   }
 
-  function handleAddAllToExpense() {
-    setLineItemConfigs((prev) =>
-      prev.map((c) =>
-        c.active && hasValidSplitAssignment(c, memberCount, splitResolverCtx) ? { ...c, active: true } : c,
-      ),
-    )
-  }
-
   function handleReceiptGuestsChange(nextGuests: HouseholdGuest[]) {
     setLineItemConfigs((prev) =>
       withConfiguredFlags(
@@ -585,16 +576,7 @@ export default function ScanReceiptWizard({
       return
     }
 
-    const configsToSave = withConfiguredFlags(
-      lineItemConfigs.filter((c) => c.active),
-      memberCount,
-      splitResolverCtx,
-    )
-    const remaining = configsToSave.filter((c) => !isLineItemReadyToSave(c, memberCount, splitResolverCtx)).length
-    if (remaining > 0) {
-      setSaveSplitsError(RECEIPTS.ERRORS.SPLITS_REQUIRED)
-      return
-    }
+    const configsToSave = lineItemConfigs.filter((c) => c.active)
 
     setSaving(true)
     try {
@@ -754,7 +736,6 @@ export default function ScanReceiptWizard({
           onReceiptGuestsChange={handleReceiptGuestsChange}
           onGuestCreated={handleGuestCreated}
           onConfirmLineItem={handleConfirmLineItem}
-          onAddAllToExpense={handleAddAllToExpense}
           onOpenModal={(index) => {
             setLastModalIndex(index ?? null)
             setShowItemModal(true)

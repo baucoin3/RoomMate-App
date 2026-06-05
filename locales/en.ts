@@ -132,6 +132,7 @@ export const NAV = {
     SETTINGS: 'Settings',
   },
   APP_SETTINGS_ARIA: 'App settings',
+  BACK_TO_HOUSEHOLDS: '← Back to Households',
 } as const
 
 export const ERRORS = {
