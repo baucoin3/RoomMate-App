@@ -97,16 +97,16 @@ export default function RecipeCardMenu({ recipeId, recipeName, householdId, ingr
         <TriggerIcon className="h-4 w-4" />
       </button>
 
-      {/* Popup — appears to the RIGHT of the card */}
+      {/* Popup — appears below the trigger, right-aligned within the card */}
       <div
-        className="absolute top-0 z-50 pointer-events-none"
-        style={{ left: 'calc(100% + 10px)' }}
+        className="absolute right-0 top-full mt-1 z-50"
+        style={{ pointerEvents: open ? 'auto' : 'none' }}
       >
         <div
           style={{
             opacity: open && revealed ? 1 : 0,
-            transform: open && revealed ? 'scale(1) translateX(0)' : 'scale(0.92) translateX(-6px)',
-            transformOrigin: 'left top',
+            transform: open && revealed ? 'scale(1) translateY(0)' : 'scale(0.92) translateY(-6px)',
+            transformOrigin: 'top right',
             transition: 'opacity 180ms ease, transform 200ms cubic-bezier(0.34,1.56,0.64,1)',
             pointerEvents: open ? 'auto' : 'none',
           }}

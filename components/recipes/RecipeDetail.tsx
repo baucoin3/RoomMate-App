@@ -137,7 +137,7 @@ export default function RecipeDetail({ recipe, householdId, initialMealLogs = []
       </div>
 
       {/* Title + actions row */}
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
+      <div className="flex flex-col gap-3 mb-1 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <h1
             className="text-[30px] font-[600] leading-tight text-[--color-text-primary]"
@@ -154,7 +154,7 @@ export default function RecipeDetail({ recipe, householdId, initialMealLogs = []
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 mt-1 flex-wrap">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => void handleMarkMadeToday()}
             disabled={logState === 'logging'}
