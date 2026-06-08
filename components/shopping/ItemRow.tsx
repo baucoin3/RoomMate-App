@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import type { ShoppingListItem } from '@/lib/types/shopping'
 import { SHOPPING } from '@/locales/en'
@@ -10,6 +10,7 @@ interface ItemRowProps {
   listId: string
   onToggled: (itemId: string, isChecked: boolean) => void
   onDeleted: (itemId: string) => void
+  onEdited: (itemId: string, newName: string) => void
 }
 
 const CATEGORY_BADGE_STYLES: Record<string, string> = {
@@ -35,11 +36,16 @@ function formatQuantity(quantity: number | null, unit: string | null): string | 
   return unit ?? null
 }
 
-export default function ItemRow({ item, listId, onToggled, onDeleted }: ItemRowProps) {
+export default function ItemRow({ item, listId, onToggled, onDeleted, onEdited }: ItemRowProps) {
   const [isChecked, setIsChecked] = useState(item.is_checked)
   const [isToggling, setIsToggling] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState(item.name)
+  const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
+  const editInputRef = useRef<HTMLInputElement>(null)
+  const committingRef = useRef(false)
 
   const quantityLabel = formatQuantity(item.quantity, item.unit)
 
@@ -75,6 +81,46 @@ export default function ItemRow({ item, listId, onToggled, onDeleted }: ItemRowP
     }
   }
 
+  function startEdit() {
+    setEditValue(item.name)
+    setIsEditing(true)
+    setTimeout(() => editInputRef.current?.focus(), 0)
+  }
+
+  async function commitEdit() {
+    if (committingRef.current) return
+    committingRef.current = true
+    const trimmed = editValue.trim()
+    if (!trimmed) {
+      setIsEditing(false)
+      setEditValue(item.name)
+      committingRef.current = false
+      return
+    }
+    if (trimmed === item.name) {
+      setIsEditing(false)
+      committingRef.current = false
+      return
+    }
+    setIsSaving(true)
+    setError('')
+    try {
+      await apiClient.patch(`/api/shopping-lists/${listId}/items/${item.id}`, { name: trimmed })
+      onEdited(item.id, trimmed)
+      setIsEditing(false)
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setIsSaving(false)
+      committingRef.current = false
+    }
+  }
+
+  function handleEditKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') { e.preventDefault(); void commitEdit() }
+    if (e.key === 'Escape') { setIsEditing(false); setEditValue(item.name); setError('') }
+  }
+
   return (
     <div className="group flex items-center gap-3 px-4 py-2.5 border-b border-white/5 last:border-0">
       {/* Checkbox */}
@@ -95,14 +141,27 @@ export default function ItemRow({ item, listId, onToggled, onDeleted }: ItemRowP
         )}
       </button>
 
-      {/* Item name */}
-      <span
-        className={`flex-1 text-sm transition-all ${
-          isChecked ? 'line-through text-white/30' : 'text-white/80'
-        }`}
-      >
-        {item.name}
-      </span>
+      {/* Item name — tap to edit */}
+      {isEditing ? (
+        <input
+          ref={editInputRef}
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={() => void commitEdit()}
+          onKeyDown={handleEditKeyDown}
+          disabled={isSaving}
+          className="flex-1 bg-transparent text-sm text-white outline-none border-b border-indigo-400/60 pb-px disabled:opacity-60"
+        />
+      ) : (
+        <span
+          onClick={startEdit}
+          className={`flex-1 text-sm transition-all cursor-pointer ${
+            isChecked ? 'line-through text-white/30' : 'text-white/80'
+          }`}
+        >
+          {item.name}
+        </span>
+      )}
 
       {/* Quantity label */}
       {quantityLabel && (
@@ -119,14 +178,14 @@ export default function ItemRow({ item, listId, onToggled, onDeleted }: ItemRowP
         <span className="text-xs text-red-400 shrink-0">{error}</span>
       )}
 
-      {/* Delete button — visible on hover */}
+      {/* Delete button — always visible for mobile */}
       <button
         onClick={handleDelete}
-        disabled={isDeleting}
+        disabled={isDeleting || isEditing}
         aria-label={SHOPPING.ACTIONS.DELETE_ITEM}
-        className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-white/25 hover:text-red-400 disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 rounded"
+        className="shrink-0 p-1 -mr-1 text-white/30 hover:text-red-400 transition-colors disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 rounded"
       >
-        <TrashIcon className="h-3.5 w-3.5" />
+        <TrashIcon className="h-4 w-4" />
       </button>
     </div>
   )

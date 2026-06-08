@@ -96,6 +96,12 @@ export default function ListCard({
     onItemsChanged((prev) => prev.filter((i) => i.id !== itemId))
   }
 
+  function handleItemEdited(itemId: string, newName: string) {
+    onItemsChanged((prev) =>
+      prev.map((i) => (i.id === itemId ? { ...i, name: newName } : i)),
+    )
+  }
+
   async function handleDeleteChecked() {
     setIsDeletingChecked(true)
     setBulkError('')
@@ -157,6 +163,7 @@ export default function ListCard({
               listId={list.id}
               onToggled={handleItemToggled}
               onDeleted={handleItemDeleted}
+              onEdited={handleItemEdited}
             />
           ))}
           <AddItemRow
@@ -166,15 +173,15 @@ export default function ListCard({
           />
 
           {/* List actions footer */}
-          <div className="flex items-center justify-end gap-3 px-4 py-2 border-t border-white/5 flex-wrap">
+          <div className="flex items-center justify-end gap-1 px-4 py-3 border-t border-white/5 flex-wrap">
             {(deleteError || bulkError) && (
-              <span className="text-xs text-red-400 flex-1">{deleteError || bulkError}</span>
+              <span className="text-sm text-red-400 flex-1">{deleteError || bulkError}</span>
             )}
             {items.some((i) => i.is_checked) && (
               <button
                 onClick={handleDeleteChecked}
                 disabled={isDeletingChecked}
-                className="text-xs text-white/30 hover:text-amber-400 transition-colors disabled:opacity-50"
+                className="py-1 px-3 text-sm text-white/40 hover:text-amber-400 transition-colors disabled:opacity-50 rounded-full hover:bg-amber-400/10"
               >
                 {SHOPPING.ACTIONS.DELETE_CHECKED}
               </button>
@@ -183,7 +190,7 @@ export default function ListCard({
               <button
                 onClick={handleClearAll}
                 disabled={isClearing}
-                className="text-xs text-white/30 hover:text-red-400 transition-colors disabled:opacity-50"
+                className="py-1 px-3 text-sm text-white/40 hover:text-red-400 transition-colors disabled:opacity-50 rounded-full hover:bg-red-400/10"
               >
                 {SHOPPING.ACTIONS.CLEAR_ALL}
               </button>
@@ -192,9 +199,9 @@ export default function ListCard({
               onClick={handleDeleteList}
               disabled={isDeleting}
               aria-label={SHOPPING.ACTIONS.DELETE_LIST}
-              className="flex items-center gap-1 text-xs text-white/30 hover:text-red-400 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 py-1 px-3 text-sm text-white/40 hover:text-red-400 transition-colors disabled:opacity-50 rounded-full hover:bg-red-400/10"
             >
-              <TrashIcon className="h-3.5 w-3.5" />
+              <TrashIcon className="h-4 w-4" />
               {SHOPPING.ACTIONS.DELETE_LIST}
             </button>
           </div>

@@ -176,6 +176,7 @@ export const SHOPPING = {
     DELETE_CHECKED: 'Delete checked',
     CLEAR_ALL: 'Clear all',
     CLEAR_ALL_CONFIRM: (name: string) => `Clear all items from "${name}"?`,
+    EDIT_ITEM: 'Edit item',
     ADD_TO_LIST: 'Add to shopping list',
     ADD_ITEMS: 'Add items',
     ADDING_ITEMS: 'Adding…',

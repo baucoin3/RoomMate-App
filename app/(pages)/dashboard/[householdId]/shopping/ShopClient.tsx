@@ -60,21 +60,31 @@ export default function ShopClient({ initialLists, householdId, currentUserId }:
 
   return (
     <div className="flex flex-col gap-4 pt-1 pb-24 md:pb-6">
-      {/* Tab filter chips */}
-      <div className="flex items-center gap-2">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-              activeTab === tab.key
-                ? 'bg-white text-black'
-                : 'border border-white/15 text-white/50 hover:text-white/80 hover:border-white/30'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* Tab filter chips + New list button */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                activeTab === tab.key
+                  ? 'bg-white text-black'
+                  : 'border border-white/15 text-white/50 hover:text-white/80 hover:border-white/30'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          aria-label={SHOPPING.ACTIONS.NEW_LIST}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-semibold shadow-md transition-colors shrink-0"
+        >
+          <PlusIcon className="h-3.5 w-3.5" />
+          {SHOPPING.ACTIONS.NEW_LIST}
+        </button>
       </div>
 
       {/* List cards */}
@@ -97,16 +107,6 @@ export default function ShopClient({ initialLists, householdId, currentUserId }:
           ))}
         </div>
       )}
-
-      {/* FAB */}
-      <button
-        onClick={() => setIsModalOpen(true)}
-        aria-label={SHOPPING.ACTIONS.NEW_LIST}
-        className="fixed bottom-36 right-5 md:bottom-24 md:right-5 flex items-center gap-2 px-4 py-3 rounded-full bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-semibold shadow-lg transition-colors z-30"
-      >
-        <PlusIcon className="h-4 w-4" />
-        {SHOPPING.ACTIONS.NEW_LIST}
-      </button>
 
       {isModalOpen && (
         <NewListModal
