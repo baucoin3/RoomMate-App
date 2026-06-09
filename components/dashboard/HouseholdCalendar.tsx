@@ -65,11 +65,6 @@ function DayModal({
   const [adding, setAdding] = useState(false)
   const [titleError, setTitleError] = useState('')
   const backdropRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
 
   const dateStr = `${selected.year}-${String(selected.month + 1).padStart(2, '0')}-${String(selected.day).padStart(2, '0')}`
   const displayDate = new Date(selected.year, selected.month, selected.day).toLocaleDateString('en-US', {
@@ -209,7 +204,6 @@ function DayModal({
             <div className="space-y-2">
               <div>
                 <input
-                  ref={inputRef}
                   type="text"
                   value={title}
                   onChange={(e) => { setTitle(e.target.value); setTitleError('') }}
