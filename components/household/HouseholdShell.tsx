@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { HOUSEHOLD_NAV } from '@/lib/config/nav'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import { ROUTES } from '@/lib/constants/routes'
@@ -46,6 +46,35 @@ export default function HouseholdShell({
   const displayName = userNickname ?? userName ?? userEmail.split('@')[0]
   const greeting = `${getGreeting()}, ${displayName}`
 
+  const formatClock = useCallback(() => {
+    const d = new Date()
+    const h = d.getHours()
+    const m = d.getMinutes()
+    const h12 = h % 12 === 0 ? 12 : h % 12
+    return `${h12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
+  }, [])
+
+  const [clockTime, setClockTime] = useState(formatClock)
+  const [clockDate, setClockDate] = useState(() => {
+    const d = new Date()
+    return {
+      weekday: d.toLocaleDateString('en-US', { weekday: 'long' }),
+      long: d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+    }
+  })
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setClockTime(formatClock())
+      const d = new Date()
+      setClockDate({
+        weekday: d.toLocaleDateString('en-US', { weekday: 'long' }),
+        long: d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      })
+    }, 60000)
+    return () => clearInterval(id)
+  }, [formatClock])
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
@@ -82,22 +111,58 @@ export default function HouseholdShell({
   return (
     <div className="flex h-screen bg-[#0f0f14] text-white overflow-hidden">
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-52 shrink-0 bg-[#0f0f14] border-r border-white/5 py-4 px-3">
-        <div className="flex flex-col gap-1 flex-1 mt-2">
+      <aside
+        className="hidden md:flex flex-col w-52 shrink-0 border-r py-5 px-3.5"
+        style={{
+          background: 'rgba(15,15,20,0.55)',
+          backdropFilter: 'blur(18px)',
+          borderColor: 'rgba(233,233,237,0.06)',
+        }}
+      >
+        {/* Brand row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22, paddingLeft: 4 }}>
+          <div
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: 6,
+              background: 'linear-gradient(140deg,#9184d9,#5d5294)',
+              boxShadow: '0 0 18px rgba(145,132,217,0.45)',
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ fontSize: 13, fontWeight: 500, letterSpacing: '0.14em', color: '#9397ab' }}>
+            ROOMMATE
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-1 flex-1">
           {HOUSEHOLD_NAV.map((item) => {
             const active = isActive(item.href(householdId))
             return (
               <Link
                 key={item.key}
                 href={item.href(householdId)}
-                className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors group ${
-                  active
-                    ? 'bg-white/10 text-white'
-                    : 'text-white/40 hover:text-white/70 hover:bg-white/5'
-                }`}
+                className="relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors"
+                style={{
+                  background: active ? 'rgba(145,132,217,0.14)' : 'transparent',
+                  color: active ? '#e9e9ed' : '#75798c',
+                }}
               >
                 {active && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-indigo-400 rounded-r-full" />
+                  <span
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      width: 2,
+                      height: 20,
+                      borderRadius: '0 3px 3px 0',
+                      background: '#9184d9',
+                      boxShadow: '0 0 10px #9184d9',
+                    }}
+                  />
                 )}
                 <item.icon className="h-5 w-5 shrink-0" />
                 <span className="text-sm font-medium whitespace-nowrap">{item.label}</span>
@@ -147,18 +212,88 @@ export default function HouseholdShell({
       </aside>
 
       {/* Main content area */}
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className="flex flex-col flex-1 min-w-0 relative">
+        {/* Ambient glows — desktop only */}
+        <div
+          className="hidden md:block"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            overflow: 'hidden',
+            zIndex: 0,
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              width: 800,
+              height: 800,
+              borderRadius: '50%',
+              background: 'radial-gradient(circle,rgba(145,132,217,0.07),transparent 65%)',
+              left: -200,
+              top: -200,
+              animation: 'drift1 34s ease-in-out infinite alternate',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              width: 600,
+              height: 600,
+              borderRadius: '50%',
+              background: 'radial-gradient(circle,rgba(91,184,217,0.05),transparent 65%)',
+              right: -100,
+              bottom: -100,
+              animation: 'drift2 46s ease-in-out infinite alternate',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background:
+                'radial-gradient(ellipse at 50% 50%,transparent 40%,rgba(11,12,20,0.35) 100%)',
+            }}
+          />
+        </div>
+
         {/* Top strip */}
-        <header className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
+        <header className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0" style={{ position: 'relative', zIndex: 1 }}>
           <div>
             <Link
               href={ROUTES.HOUSEHOLD(householdId)}
-              className="text-base font-semibold text-white leading-tight hover:text-white/80 transition-colors"
+              style={{ fontSize: 15, fontWeight: 500, color: '#cfd3e5' }}
+              className="leading-tight hover:opacity-80 transition-opacity"
             >
               {householdName}
             </Link>
-            <p className="text-xs text-white/50 mt-0.5">{greeting}</p>
+            <p style={{ fontSize: 13, color: '#75798c' }} className="mt-0.5">{greeting}</p>
           </div>
+
+          {/* Desktop clock */}
+          <div className="hidden md:flex flex-col items-end">
+            <div style={{ fontSize: 11, letterSpacing: '0.2em', color: '#75798c', textTransform: 'uppercase' }}>
+              {clockDate.weekday}
+            </div>
+            <div style={{ fontSize: 12, color: '#9397ab', marginTop: 1 }}>
+              {clockDate.long}
+            </div>
+            <div
+              style={{
+                fontSize: 48,
+                fontWeight: 300,
+                letterSpacing: '-0.03em',
+                fontVariantNumeric: 'tabular-nums',
+                color: '#e9e9ed',
+                lineHeight: 1,
+                marginTop: 2,
+              }}
+            >
+              {clockTime}
+            </div>
+          </div>
+
           <div className="relative md:hidden" ref={mobileMenuRef}>
             <button
               onClick={() => setMenuOpen((prev) => !prev)}
@@ -197,7 +332,7 @@ export default function HouseholdShell({
         </header>
 
         {/* Scrollable page content */}
-        <main className="flex-1 overflow-y-auto px-4 pb-6 md:px-5">
+        <main className="flex-1 overflow-y-auto px-4 pb-6 md:px-5 relative" style={{ zIndex: 1 }}>
           {children}
         </main>
       </div>

@@ -5,9 +5,11 @@ import { createClient } from '@/lib/supabase/server'
 import { ROUTES } from '@/lib/constants/routes'
 import { ERRORS, NAV } from '@/locales/en'
 import { getDashboardData } from '@/lib/services/dashboard'
+import { getDailyTasks, getStreak, getStreakDays, getCalendarEventsForDateRange } from '@/lib/services/dailyTasks'
 import RecipesCard from '@/components/dashboard/RecipesCard'
 import RecentActivityFeed from '@/components/dashboard/RecentActivityFeed'
 import HouseholdCalendar from '@/components/dashboard/HouseholdCalendar'
+import NocturneHome from '@/components/home/NocturneHome'
 import {
   ActivitySkeleton,
   CalendarSkeleton,
@@ -15,6 +17,12 @@ import {
 
 interface HouseholdHubPageProps {
   params: { householdId: string }
+}
+
+function addDays(base: Date, n: number): string {
+  const d = new Date(base)
+  d.setDate(d.getDate() + n)
+  return d.toLocaleDateString('en-CA')
 }
 
 export default async function HouseholdHubPage({ params }: HouseholdHubPageProps) {
@@ -30,43 +38,73 @@ export default async function HouseholdHubPage({ params }: HouseholdHubPageProps
     .eq('user_id', user.id)
     .maybeSingle()
 
-  const dashboardResult = membership
-    ? await getDashboardData(supabase, params.householdId)
-    : { data: null, error: null }
-
-  if (!dashboardResult.data) {
+  if (!membership) {
     return (
       <div className="rounded-2xl bg-red-500/10 border border-red-500/20 px-5 py-4 mt-4">
-        <p className="text-sm text-red-400">{dashboardResult.error ?? ERRORS.GENERIC}</p>
+        <p className="text-sm text-red-400">{ERRORS.GENERIC}</p>
       </div>
     )
   }
 
-  const data = dashboardResult.data
   const now = new Date()
+  const todayISO = now.toLocaleDateString('en-CA')
+
+  const [dashboardResult, tasksResult, streak, streakDays, eventsResult] = await Promise.all([
+    getDashboardData(supabase, params.householdId),
+    getDailyTasks(supabase, params.householdId),
+    getStreak(supabase, params.householdId),
+    getStreakDays(supabase, params.householdId),
+    getCalendarEventsForDateRange(supabase, params.householdId, addDays(now, -4), addDays(now, 4)),
+  ])
+
+  const tasks = tasksResult.data ?? []
+  const events = eventsResult.data ?? {}
 
   return (
-    <div className="flex flex-col gap-4 pt-1 pb-20 md:pb-4">
-      <Link
-        href={ROUTES.DASHBOARD}
-        className="self-start text-sm text-white/40 hover:text-white/70 transition-colors"
-      >
-        {NAV.BACK_TO_HOUSEHOLDS}
-      </Link>
-      <Suspense fallback={<CalendarSkeleton />}>
-        <HouseholdCalendar
-          initialData={data.calendar}
+    <>
+      {/* ── Tablet / desktop — Nocturne layout (absolute, fills main) ─────────────── */}
+      <div className="hidden md:block absolute inset-0">
+        <NocturneHome
           householdId={params.householdId}
-          initialYear={now.getFullYear()}
-          initialMonth={now.getMonth()}
+          initialTasks={tasks}
+          initialEvents={events}
+          initialStreak={streak}
+          initialStreakDays={streakDays}
         />
-      </Suspense>
+      </div>
 
-      <RecipesCard householdId={params.householdId} />
+      {/* ── Mobile — existing layout ──────────────────────────────────────────────── */}
+      <div className="flex md:hidden flex-col gap-4 pt-1 pb-20">
+        <Link
+          href={ROUTES.DASHBOARD}
+          className="self-start text-sm text-white/40 hover:text-white/70 transition-colors"
+        >
+          {NAV.BACK_TO_HOUSEHOLDS}
+        </Link>
 
-      <Suspense fallback={<ActivitySkeleton />}>
-        <RecentActivityFeed data={data.recentActivity} />
-      </Suspense>
-    </div>
+        {dashboardResult.data ? (
+          <>
+            <Suspense fallback={<CalendarSkeleton />}>
+              <HouseholdCalendar
+                initialData={dashboardResult.data.calendar}
+                householdId={params.householdId}
+                initialYear={now.getFullYear()}
+                initialMonth={now.getMonth()}
+              />
+            </Suspense>
+
+            <RecipesCard householdId={params.householdId} />
+
+            <Suspense fallback={<ActivitySkeleton />}>
+              <RecentActivityFeed data={dashboardResult.data.recentActivity} />
+            </Suspense>
+          </>
+        ) : (
+          <div className="rounded-2xl bg-red-500/10 border border-red-500/20 px-5 py-4 mt-4">
+            <p className="text-sm text-red-400">{dashboardResult.error ?? ERRORS.GENERIC}</p>
+          </div>
+        )}
+      </div>
+    </>
   )
 }
