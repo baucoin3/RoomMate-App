@@ -77,9 +77,11 @@ export default function NocturneHome({
       } else {
         showToast('Task completed!')
       }
-    } catch {
+    } catch (err) {
+      console.error('[NocturneHome.handleComplete]', err)
       // revert on failure
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
+      showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
     }
   }
 
@@ -97,8 +99,10 @@ export default function NocturneHome({
           return next
         })
       }
-    } catch {
+    } catch (err) {
+      console.error('[NocturneHome.handleUncomplete]', err)
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
+      showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
     }
   }
 

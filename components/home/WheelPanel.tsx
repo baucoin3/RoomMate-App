@@ -10,6 +10,10 @@ const THETA = 0.202
 const R = 1180
 const CARD_W = 236
 const CARD_H = 296
+// Pointer must move past this many px before the wheel treats it as a drag.
+// Below it, the wheel stays still so a click's card doesn't repaint out from
+// under the cursor (which makes the browser swallow the `click`).
+const DRAG_THRESHOLD = 6
 
 const CATS = {
   fitness: 'oklch(0.734 0.125 289.2)',
@@ -102,25 +106,54 @@ export default function WheelPanel({
     springTo(Math.round(targetRef.current) + (delta > 0 ? 1 : -1))
   }
 
-  // Drag
-  const dragRef = useRef({ active: false, startX: 0, startTarget: 0 })
+  // Drag — the wheel only reacts once the pointer clears DRAG_THRESHOLD, so a
+  // plain click leaves it perfectly still and the card's `click` fires reliably.
+  const dragRef = useRef({
+    active: false,
+    dragging: false,
+    startX: 0,
+    startY: 0,
+    startTarget: 0,
+    pointerId: -1,
+  })
 
   function handlePointerDown(e: React.PointerEvent) {
-    dragRef.current = { active: true, startX: e.clientX, startTarget: targetRef.current }
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    // Freeze any in-flight settle so the pressed card can't drift under the cursor.
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+    targetRef.current = posRef.current
+    dragRef.current = {
+      active: true,
+      dragging: false,
+      startX: e.clientX,
+      startY: e.clientY,
+      startTarget: posRef.current,
+      pointerId: e.pointerId,
+    }
   }
 
   function handlePointerMove(e: React.PointerEvent) {
-    if (!dragRef.current.active) return
-    const dx = e.clientX - dragRef.current.startX
-    const raw = dragRef.current.startTarget - dx / 190
+    const drag = dragRef.current
+    if (!drag.active) return
+    const dx = e.clientX - drag.startX
+    if (!drag.dragging) {
+      if (Math.hypot(dx, e.clientY - drag.startY) <= DRAG_THRESHOLD) return
+      drag.dragging = true
+      ;(e.currentTarget as HTMLElement).setPointerCapture(drag.pointerId)
+    }
+    const raw = drag.startTarget - dx / 190
     targetRef.current = Math.max(0, Math.min(tasks.length - 1, raw))
     if (rafRef.current === null) startSpring()
   }
 
   function handlePointerUp() {
-    if (!dragRef.current.active) return
-    dragRef.current.active = false
+    const drag = dragRef.current
+    if (!drag.active) return
+    drag.active = false
+    drag.dragging = false
+    // Runs after any `click` has already dispatched, so it never steals a tap.
     targetRef.current = Math.round(posRef.current)
     startSpring()
   }
@@ -142,8 +175,9 @@ export default function WheelPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks.length])
 
-  async function handleCardClick(task: DailyTask, o: number, cardIndex: number) {
-    if (Math.abs(o) >= 0.35) {
+  async function handleCardClick(task: DailyTask, cardIndex: number) {
+    // Use the live wheel position, not the stale render-time offset.
+    if (Math.abs(cardIndex - posRef.current) >= 0.35) {
       springTo(cardIndex)
       return
     }
@@ -210,6 +244,7 @@ export default function WheelPanel({
           overflow: 'hidden',
           cursor: 'grab',
           userSelect: 'none',
+          touchAction: 'none',
           flex: 1,
         }}
       >
@@ -245,7 +280,7 @@ export default function WheelPanel({
             return (
               <div
                 key={task.id}
-                onClick={() => handleCardClick(task, o, cardIndex)}
+                onClick={() => handleCardClick(task, cardIndex)}
                 style={{
                   position: 'absolute',
                   left: '50%',

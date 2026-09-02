@@ -841,5 +841,6 @@ export const DAILY_TASKS = {
     CATEGORY_REQUIRED: 'Category is required.',
     TIME_REQUIRED: 'Time is required.',
     CREATE_FAILED: 'Failed to create task.',
+    UPDATE_FAILED: 'Could not update task. Try again.',
   },
 } as const
