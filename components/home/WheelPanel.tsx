@@ -26,7 +26,8 @@ function catColorWithAlpha(cat: keyof typeof CATS, alpha: number): string {
   return CATS[cat].replace(')', ` / ${alpha.toFixed(2)})`)
 }
 
-function formatTaskTime(timeOfDay: string): string {
+function formatTaskTime(timeOfDay: string | null): string {
+  if (!timeOfDay) return ''
   const [hStr, mStr] = timeOfDay.split(':')
   const h = parseInt(hStr, 10)
   const period = h < 12 ? 'AM' : 'PM'
@@ -34,8 +35,14 @@ function formatTaskTime(timeOfDay: string): string {
   return `${h12}:${mStr} ${period}`
 }
 
+function timeOfDayToMins(timeOfDay: string): number {
+  const [hStr, mStr] = timeOfDay.split(':')
+  return parseInt(hStr, 10) * 60 + parseInt(mStr, 10)
+}
+
 interface WheelPanelProps {
   tasks: DailyTask[]
+  now: Date
   soundRef: { current: SoundEngine | null }
   springNonce: number
   springIndex: number
@@ -45,12 +52,14 @@ interface WheelPanelProps {
 
 export default function WheelPanel({
   tasks,
+  now,
   soundRef,
   springNonce,
   springIndex,
   onComplete,
   onUncomplete,
 }: WheelPanelProps) {
+  const nowMins = now.getHours() * 60 + now.getMinutes()
   const posRef = useRef(0)
   const targetRef = useRef(0)
   const [pos, setPos] = useState(0)
@@ -276,6 +285,8 @@ export default function WheelPanel({
             const focus = Math.max(0, 1 - Math.abs(o))
             const zIdx = 200 - Math.round(Math.abs(o) * 20)
             const catColor = CATS[task.category]
+            const taskMins = task.timeOfDay ? timeOfDayToMins(task.timeOfDay) : null
+            const isOverdue = taskMins !== null && nowMins > taskMins && !task.done
 
             return (
               <div
@@ -294,12 +305,17 @@ export default function WheelPanel({
                     : 'linear-gradient(160deg,rgba(35,37,50,0.9),rgba(20,22,34,0.86))',
                   backdropFilter: `blur(${(6 + focus * 8).toFixed(1)}px)`,
                   border: `1px solid ${
-                    focus > 0.5 ? 'rgba(145,132,217,0.5)' : 'rgba(233,233,237,0.09)'
+                    isOverdue
+                      ? 'rgba(220,38,38,0.4)'
+                      : focus > 0.5
+                        ? 'rgba(145,132,217,0.5)'
+                        : 'rgba(233,233,237,0.09)'
                   }`,
                   boxShadow: [
                     `0 ${(14 + focus * 20).toFixed(0)}px ${(34 + focus * 30).toFixed(0)}px rgba(0,0,0,${(0.4 + focus * 0.2).toFixed(2)})`,
                     `0 0 ${(focus * 52).toFixed(0)}px ${catColorWithAlpha(task.category, focus * 0.32)}`,
-                  ].join(', '),
+                    isOverdue ? 'inset 0 0 0 1px rgba(220,38,38,0.2), 0 0 28px rgba(220,38,38,0.14)' : '',
+                  ].filter(Boolean).join(', '),
                   transform: `translate(-50%,0) translate(${x.toFixed(2)}px,${y.toFixed(2)}px) rotate(${rot.toFixed(3)}deg) scale(${scale.toFixed(3)})`,
                   opacity,
                   zIndex: zIdx,

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { ERRORS, HOUSEHOLDS } from '@/locales/en'
-import { completeDailyTask, uncompleteDailyTask } from '@/lib/services/dailyTasks'
+import { completeDailyTask, uncompleteDailyTask, getCurrentPeriodDate } from '@/lib/services/dailyTasks'
 
 interface RouteParams {
   params: { householdId: string; taskId: string }
@@ -31,7 +31,7 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: HOUSEHOLDS.ERRORS.FORBIDDEN }, { status: 403 })
     }
 
-    const today = new Date().toLocaleDateString('en-CA')
+    const today = getCurrentPeriodDate()
     const { data, error } = await completeDailyTask(supabase, params.taskId, user.id, today)
     if (error) return NextResponse.json({ error }, { status: 400 })
 
@@ -56,7 +56,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: HOUSEHOLDS.ERRORS.FORBIDDEN }, { status: 403 })
     }
 
-    const today = new Date().toLocaleDateString('en-CA')
+    const today = getCurrentPeriodDate()
     const { error } = await uncompleteDailyTask(supabase, params.taskId, user.id, today)
     if (error) return NextResponse.json({ error }, { status: 400 })
 

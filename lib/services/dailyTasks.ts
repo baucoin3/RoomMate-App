@@ -6,9 +6,22 @@ import type {
   NocturneCalendarData,
   NocturneCalendarEvent,
   TaskCategory,
+  TaskScope,
 } from '@/lib/types/dailyTasks'
 
-export function formatTimeOfDay(timeOfDay: string): string {
+// The "day" resets at 9am, not midnight. Before 9am we're still in yesterday's period.
+export function getCurrentPeriodDate(): string {
+  const now = new Date()
+  if (now.getHours() < 9) {
+    const yesterday = new Date(now)
+    yesterday.setDate(yesterday.getDate() - 1)
+    return yesterday.toLocaleDateString('en-CA')
+  }
+  return now.toLocaleDateString('en-CA')
+}
+
+export function formatTimeOfDay(timeOfDay: string | null): string {
+  if (!timeOfDay) return ''
   const [hStr, mStr] = timeOfDay.split(':')
   const h = parseInt(hStr, 10)
   const m = parseInt(mStr, 10)
@@ -37,23 +50,29 @@ export function timeDisplayToTimeOfDay(timeStr: string): string {
 export async function getDailyTasks(
   supabase: SupabaseClient,
   householdId: string,
+  userId: string,
 ): Promise<{ data: DailyTask[] | null; error: string | null }> {
   try {
-    const today = new Date().toLocaleDateString('en-CA')
+    const today = getCurrentPeriodDate()
 
-    const [tasksResult, completionsResult] = await Promise.all([
-      supabase
-        .from('daily_tasks')
-        .select('id, household_id, title, category, time_of_day, logs_to_calendar, created_by, created_at')
-        .eq('household_id', householdId)
-        .order('time_of_day'),
-      supabase
-        .from('daily_task_completions')
-        .select('task_id')
-        .eq('completed_on', today),
-    ])
+    const tasksResult = await supabase
+      .from('daily_tasks')
+      .select('id, household_id, title, category, time_of_day, logs_to_calendar, created_by, created_at, scope')
+      .eq('household_id', householdId)
+      .or(`scope.eq.household,and(scope.eq.personal,created_by.eq.${userId})`)
+      .order('time_of_day', { ascending: true, nullsFirst: false })
 
     if (tasksResult.error) return { data: null, error: tasksResult.error.message }
+
+    const taskIds = (tasksResult.data ?? []).map((t) => t.id as string)
+
+    const completionsResult = taskIds.length > 0
+      ? await supabase
+          .from('daily_task_completions')
+          .select('task_id')
+          .in('task_id', taskIds)
+          .eq('completed_on', today)
+      : { data: [], error: null }
 
     const completedTodayIds = new Set(
       (completionsResult.data ?? []).map((c) => c.task_id as string),
@@ -64,11 +83,12 @@ export async function getDailyTasks(
       householdId: t.household_id as string,
       title: t.title as string,
       category: t.category as TaskCategory,
-      timeOfDay: t.time_of_day as string,
+      timeOfDay: (t.time_of_day as string | null) ?? null,
       logsToCalendar: t.logs_to_calendar as boolean,
       createdBy: t.created_by as string,
       createdAt: t.created_at as string,
       done: completedTodayIds.has(t.id as string),
+      scope: (t.scope as TaskScope) ?? 'personal',
     }))
 
     return { data: tasks, error: null }
@@ -183,11 +203,12 @@ export async function createDailyTask(
         household_id: householdId,
         title: payload.title,
         category: payload.category,
-        time_of_day: payload.timeOfDay,
+        time_of_day: payload.timeOfDay ?? null,
         logs_to_calendar: payload.logsToCalendar,
         created_by: userId,
+        scope: payload.scope,
       })
-      .select('id, household_id, title, category, time_of_day, logs_to_calendar, created_by, created_at')
+      .select('id, household_id, title, category, time_of_day, logs_to_calendar, created_by, created_at, scope')
       .single()
 
     if (error) return { data: null, error: error.message }
@@ -198,11 +219,12 @@ export async function createDailyTask(
         householdId: data.household_id as string,
         title: data.title as string,
         category: data.category as TaskCategory,
-        timeOfDay: data.time_of_day as string,
+        timeOfDay: (data.time_of_day as string | null) ?? null,
         logsToCalendar: data.logs_to_calendar as boolean,
         createdBy: data.created_by as string,
         createdAt: data.created_at as string,
         done: false,
+        scope: (data.scope as TaskScope) ?? 'personal',
       },
       error: null,
     }
@@ -267,12 +289,60 @@ export async function uncompleteDailyTask(
   }
 }
 
+export async function resetDailyTasksForToday(
+  supabase: SupabaseClient,
+  householdId: string,
+  userId: string,
+): Promise<{ error: string | null }> {
+  try {
+    const today = getCurrentPeriodDate()
+
+    const [personalResult, householdResult] = await Promise.all([
+      supabase
+        .from('daily_tasks')
+        .select('id')
+        .eq('household_id', householdId)
+        .eq('scope', 'personal')
+        .eq('created_by', userId),
+      supabase
+        .from('daily_tasks')
+        .select('id')
+        .eq('household_id', householdId)
+        .eq('scope', 'household'),
+    ])
+
+    const personalIds = (personalResult.data ?? []).map((t) => t.id as string)
+    const householdIds = (householdResult.data ?? []).map((t) => t.id as string)
+
+    if (personalIds.length > 0) {
+      await supabase
+        .from('daily_task_completions')
+        .delete()
+        .in('task_id', personalIds)
+        .eq('completed_by', userId)
+        .eq('completed_on', today)
+    }
+
+    if (householdIds.length > 0) {
+      await supabase
+        .from('daily_task_completions')
+        .delete()
+        .in('task_id', householdIds)
+        .eq('completed_on', today)
+    }
+    return { error: null }
+  } catch (err) {
+    console.error('[dailyTasks/resetDailyTasksForToday]', err)
+    return { error: 'Failed to reset daily tasks.' }
+  }
+}
+
 type CompletionRow = {
   completed_on: string
   daily_tasks: {
     title: string
     category: string
-    time_of_day: string
+    time_of_day: string | null
     logs_to_calendar: boolean
     household_id: string
   }
@@ -314,7 +384,7 @@ export async function getCalendarEventsForDateRange(
       const k = comp.completed_on
       if (!result[k]) result[k] = []
       const ev: NocturneCalendarEvent = {
-        time: formatTimeOfDay(comp.daily_tasks.time_of_day),
+        time: comp.daily_tasks.time_of_day ? formatTimeOfDay(comp.daily_tasks.time_of_day) : '—',
         title: comp.daily_tasks.title + ' — logged',
         cat: comp.daily_tasks.category as TaskCategory,
       }

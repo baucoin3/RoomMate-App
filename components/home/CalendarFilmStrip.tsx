@@ -27,6 +27,7 @@ function addDays(base: Date, n: number): Date {
 interface CalendarFilmStripProps {
   events: Record<string, NocturneCalendarEvent[]>
   now: Date
+  onScroll?: () => void
 }
 
 const FADED_RULE: React.CSSProperties = {
@@ -37,7 +38,7 @@ const FADED_RULE: React.CSSProperties = {
   margin: '14px 0',
 }
 
-export default function CalendarFilmStrip({ events, now }: CalendarFilmStripProps) {
+export default function CalendarFilmStrip({ events, now, onScroll }: CalendarFilmStripProps) {
   const todayISO = toISO(now)
   const [offset, setOffset] = useState(0)
 
@@ -209,7 +210,7 @@ export default function CalendarFilmStrip({ events, now }: CalendarFilmStripProp
           return (
             <div
               key={iso}
-              onClick={() => setOffset((o) => o + (idx - 4))}
+              onClick={() => { setOffset((o) => o + (idx - 4)); onScroll?.() }}
               style={{
                 flex: 1,
                 minWidth: 0,
@@ -275,9 +276,19 @@ export default function CalendarFilmStrip({ events, now }: CalendarFilmStripProp
           marginTop: 16,
         }}
       >
+        {/* Category legend */}
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+          {(['fitness', 'home', 'work', 'errands'] as const).map((cat) => (
+            <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <div style={{ width: 11, height: 11, borderRadius: '50%', background: CATS[cat], boxShadow: `0 0 5px ${CATS[cat]}88`, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, fontWeight: 500, color: '#9397ab', textTransform: 'capitalize' }}>{cat}</span>
+            </div>
+          ))}
+        </div>
+
         <div style={{ display: 'flex', gap: 8 }}>
           <button
-            onClick={() => setOffset((o) => o - 1)}
+            onClick={() => { setOffset((o) => o - 1); onScroll?.() }}
             style={{
               width: 36,
               height: 36,
@@ -306,7 +317,7 @@ export default function CalendarFilmStrip({ events, now }: CalendarFilmStripProp
             </svg>
           </button>
           <button
-            onClick={() => setOffset((o) => o + 1)}
+            onClick={() => { setOffset((o) => o + 1); onScroll?.() }}
             style={{
               width: 36,
               height: 36,
@@ -351,26 +362,6 @@ export default function CalendarFilmStrip({ events, now }: CalendarFilmStripProp
           </button>
         </div>
 
-        {/* Category legend */}
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-          {(['fitness', 'home', 'work', 'errands'] as const).map((cat) => (
-            <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: '50%',
-                  background: CATS[cat],
-                }}
-              />
-              <span
-                style={{ fontSize: 11, color: '#75798c', textTransform: 'capitalize' }}
-              >
-                {cat}
-              </span>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   )

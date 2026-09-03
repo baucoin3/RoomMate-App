@@ -51,7 +51,7 @@ export default async function HouseholdHubPage({ params }: HouseholdHubPageProps
 
   const [dashboardResult, tasksResult, streak, streakDays, eventsResult] = await Promise.all([
     getDashboardData(supabase, params.householdId),
-    getDailyTasks(supabase, params.householdId),
+    getDailyTasks(supabase, params.householdId, user.id),
     getStreak(supabase, params.householdId),
     getStreakDays(supabase, params.householdId),
     getCalendarEventsForDateRange(supabase, params.householdId, addDays(now, -4), addDays(now, 4)),

@@ -171,6 +171,25 @@ export default function HouseholdShell({
           })}
         </div>
 
+        {/* Scan receipt link — desktop only */}
+        <div style={{ marginBottom: 4, marginTop: 4 }}>
+          <div style={{ height: 1, background: 'rgba(233,233,237,0.06)', marginBottom: 8 }} />
+          <Link
+            href={ROUTES.RECEIPT_NEW(householdId)}
+            className="relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors"
+            style={{
+              background: pathname === ROUTES.RECEIPT_NEW(householdId) ? 'rgba(145,132,217,0.14)' : 'transparent',
+              color: pathname === ROUTES.RECEIPT_NEW(householdId) ? '#e9e9ed' : '#75798c',
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden>
+              <path d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+              <path d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+            </svg>
+            <span className="text-sm font-medium whitespace-nowrap">Scan Receipt</span>
+          </Link>
+        </div>
+
         {/* User avatar at bottom */}
         <div className="relative" ref={menuRef}>
           <button

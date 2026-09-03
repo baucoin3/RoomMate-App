@@ -2,13 +2,14 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { ERRORS, HOUSEHOLDS, DAILY_TASKS } from '@/locales/en'
 import { getDailyTasks, createDailyTask, timeDisplayToTimeOfDay } from '@/lib/services/dailyTasks'
-import type { CreateDailyTaskPayload, TaskCategory } from '@/lib/types/dailyTasks'
+import type { CreateDailyTaskPayload, TaskCategory, TaskScope } from '@/lib/types/dailyTasks'
 
 interface RouteParams {
   params: { householdId: string }
 }
 
 const VALID_CATEGORIES: TaskCategory[] = ['fitness', 'home', 'work', 'errands']
+const VALID_SCOPES: TaskScope[] = ['personal', 'household']
 
 export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
@@ -30,7 +31,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: HOUSEHOLDS.ERRORS.FORBIDDEN }, { status: 403 })
     }
 
-    const { data, error } = await getDailyTasks(supabase, params.householdId)
+    const { data, error } = await getDailyTasks(supabase, params.householdId, user.id)
     if (error) return NextResponse.json({ error }, { status: 400 })
 
     return NextResponse.json({ data })
@@ -65,12 +66,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       category?: unknown
       timeOfDay?: unknown
       logsToCalendar?: unknown
+      scope?: unknown
     }
 
     const title = typeof body.title === 'string' ? body.title.trim() : ''
     const category = typeof body.category === 'string' ? body.category : ''
-    const timeOfDayRaw = typeof body.timeOfDay === 'string' ? body.timeOfDay.trim() : ''
+    const timeOfDayRaw = typeof body.timeOfDay === 'string' ? body.timeOfDay.trim() : null
     const logsToCalendar = body.logsToCalendar === true
+    const scope = typeof body.scope === 'string' && VALID_SCOPES.includes(body.scope as TaskScope)
+      ? (body.scope as TaskScope)
+      : 'personal'
 
     if (!title) {
       return NextResponse.json({ error: DAILY_TASKS.ERRORS.TITLE_REQUIRED }, { status: 400 })
@@ -78,20 +83,25 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (!VALID_CATEGORIES.includes(category as TaskCategory)) {
       return NextResponse.json({ error: DAILY_TASKS.ERRORS.CATEGORY_REQUIRED }, { status: 400 })
     }
-    if (!timeOfDayRaw) {
-      return NextResponse.json({ error: DAILY_TASKS.ERRORS.TIME_REQUIRED }, { status: 400 })
-    }
 
-    // Convert display time "6:30 PM" → "18:30:00" if needed
-    const timeOfDay = /^\d{2}:\d{2}:\d{2}$/.test(timeOfDayRaw)
-      ? timeOfDayRaw
-      : timeDisplayToTimeOfDay(timeOfDayRaw)
+    // Convert display time "6:30 PM" → "18:30:00", or "HH:MM" → "HH:MM:00", if provided
+    let timeOfDay: string | null = null
+    if (timeOfDayRaw) {
+      if (/^\d{2}:\d{2}:\d{2}$/.test(timeOfDayRaw)) {
+        timeOfDay = timeOfDayRaw
+      } else if (/^\d{2}:\d{2}$/.test(timeOfDayRaw)) {
+        timeOfDay = timeOfDayRaw + ':00'
+      } else {
+        timeOfDay = timeDisplayToTimeOfDay(timeOfDayRaw)
+      }
+    }
 
     const payload: CreateDailyTaskPayload = {
       title,
       category: category as TaskCategory,
       timeOfDay,
       logsToCalendar,
+      scope,
     }
 
     const { data, error } = await createDailyTask(supabase, params.householdId, user.id, payload)

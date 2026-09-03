@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { TaskCategory } from '@/lib/types/dailyTasks'
+import type { TaskCategory, TaskScope } from '@/lib/types/dailyTasks'
 import type { SoundEngine } from './SoundEngine'
 import { DAILY_TASKS } from '@/locales/en'
 
@@ -10,6 +10,7 @@ export interface TaskDraft {
   category: TaskCategory | ''
   time: string
   logsToCalendar: boolean
+  scope: TaskScope
 }
 
 interface TaskSlideOverProps {
@@ -26,24 +27,58 @@ const CAT_OPTIONS: { key: TaskCategory; label: string; color: string }[] = [
   { key: 'errands', label: DAILY_TASKS.CATEGORIES.ERRANDS, color: 'oklch(0.734 0.125 45)' },
 ]
 
+// Convert native time input "HH:MM" → display format "H:MM AM/PM"
+function nativeToDisplay(t: string): string {
+  if (!t) return ''
+  const [hStr, mStr] = t.split(':')
+  const h = parseInt(hStr, 10)
+  const period = h < 12 ? 'AM' : 'PM'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${mStr} ${period}`
+}
+
+// Convert display format "H:MM AM/PM" → native input "HH:MM"
+function displayToNative(t: string): string {
+  if (!t) return ''
+  const match = /^(\d+):(\d+)\s*(AM|PM)$/i.exec(t.trim())
+  if (!match) return ''
+  let h = parseInt(match[1], 10) % 12
+  if (match[3].toUpperCase() === 'PM') h += 12
+  return `${String(h).padStart(2, '0')}:${match[2]}`
+}
+
+const LABEL_STYLE: React.CSSProperties = {
+  fontSize: 11,
+  letterSpacing: '0.16em',
+  color: '#75798c',
+  textTransform: 'uppercase',
+  display: 'block',
+  marginBottom: 8,
+}
+
 export default function TaskSlideOver({ open, onClose, onSave, soundRef }: TaskSlideOverProps) {
   const [draft, setDraft] = useState<TaskDraft>({
     title: '',
     category: '',
     time: '',
     logsToCalendar: false,
+    scope: 'personal',
   })
   const [saving, setSaving] = useState(false)
 
+  // Track whether a preset is active vs custom input
+  const isPreset = DAILY_TASKS.TIME_PRESETS.includes(draft.time as typeof DAILY_TASKS.TIME_PRESETS[number])
+  const nativeValue = isPreset ? displayToNative(draft.time) : draft.time ? displayToNative(draft.time) : ''
+
   async function handleSave() {
-    if (!draft.title.trim() || !draft.category || !draft.time) {
+    if (!draft.title.trim() || !draft.category) {
       soundRef.current?.playInvalid()
       return
     }
     setSaving(true)
     try {
       await onSave(draft)
-      setDraft({ title: '', category: '', time: '', logsToCalendar: false })
+      setDraft({ title: '', category: '', time: '', logsToCalendar: false, scope: 'personal' })
     } finally {
       setSaving(false)
     }
@@ -88,15 +123,7 @@ export default function TaskSlideOver({ open, onClose, onSave, soundRef }: TaskS
           overflowY: 'auto',
         }}
       >
-        <div
-          style={{
-            fontSize: 11,
-            letterSpacing: '0.2em',
-            color: '#75798c',
-            textTransform: 'uppercase',
-            marginBottom: 8,
-          }}
-        >
+        <div style={{ fontSize: 11, letterSpacing: '0.2em', color: '#75798c', textTransform: 'uppercase', marginBottom: 8 }}>
           {DAILY_TASKS.SLIDE_EYEBROW}
         </div>
         <div style={{ fontSize: 24, fontWeight: 300, color: '#e9e9ed', marginBottom: 32 }}>
@@ -105,18 +132,7 @@ export default function TaskSlideOver({ open, onClose, onSave, soundRef }: TaskS
 
         {/* Title */}
         <div style={{ marginBottom: 24 }}>
-          <label
-            style={{
-              fontSize: 11,
-              letterSpacing: '0.16em',
-              color: '#75798c',
-              textTransform: 'uppercase',
-              display: 'block',
-              marginBottom: 8,
-            }}
-          >
-            {DAILY_TASKS.SLIDE_TASK_LABEL}
-          </label>
+          <label style={LABEL_STYLE}>{DAILY_TASKS.SLIDE_TASK_LABEL}</label>
           <input
             value={draft.title}
             onChange={(e) => setDraft({ ...draft, title: e.target.value })}
@@ -141,18 +157,7 @@ export default function TaskSlideOver({ open, onClose, onSave, soundRef }: TaskS
 
         {/* Category */}
         <div style={{ marginBottom: 24 }}>
-          <label
-            style={{
-              fontSize: 11,
-              letterSpacing: '0.16em',
-              color: '#75798c',
-              textTransform: 'uppercase',
-              display: 'block',
-              marginBottom: 8,
-            }}
-          >
-            {DAILY_TASKS.SLIDE_CATEGORY_LABEL}
-          </label>
+          <label style={LABEL_STYLE}>{DAILY_TASKS.SLIDE_CATEGORY_LABEL}</label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {CAT_OPTIONS.map(({ key, label, color }) => {
               const sel = draft.category === key
@@ -172,40 +177,69 @@ export default function TaskSlideOver({ open, onClose, onSave, soundRef }: TaskS
                     transition: 'all .2s ease',
                   }}
                 >
-                  <div
-                    style={{
-                      width: 9,
-                      height: 9,
-                      borderRadius: '50%',
-                      background: color,
-                      flexShrink: 0,
-                      boxShadow: `0 0 6px ${color}`,
-                    }}
-                  />
-                  <span style={{ fontSize: 14, color: sel ? '#e9e9ed' : '#9397ab' }}>
-                    {label}
-                  </span>
+                  <div style={{ width: 9, height: 9, borderRadius: '50%', background: color, flexShrink: 0, boxShadow: `0 0 6px ${color}` }} />
+                  <span style={{ fontSize: 14, color: sel ? '#e9e9ed' : '#9397ab' }}>{label}</span>
                 </button>
               )
             })}
           </div>
         </div>
 
-        {/* Time presets */}
+        {/* Scope (Visibility) */}
         <div style={{ marginBottom: 24 }}>
-          <label
-            style={{
-              fontSize: 11,
-              letterSpacing: '0.16em',
-              color: '#75798c',
-              textTransform: 'uppercase',
-              display: 'block',
-              marginBottom: 8,
-            }}
-          >
-            {DAILY_TASKS.SLIDE_TIME_LABEL}
-          </label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <label style={LABEL_STYLE}>{DAILY_TASKS.SLIDE_SCOPE_LABEL}</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {(['personal', 'household'] as TaskScope[]).map((s) => {
+              const sel = draft.scope === s
+              return (
+                <button
+                  key={s}
+                  onClick={() => setDraft({ ...draft, scope: s })}
+                  style={{
+                    flex: 1,
+                    height: 40,
+                    borderRadius: 20,
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    fontWeight: sel ? 500 : 400,
+                    background: sel ? 'rgba(145,132,217,0.16)' : 'rgba(233,233,237,0.04)',
+                    border: `1px solid ${sel ? '#9184d9' : 'rgba(233,233,237,0.08)'}`,
+                    color: sel ? '#e9e9ed' : '#9397ab',
+                    transition: 'all .2s ease',
+                  }}
+                >
+                  {s === 'personal' ? DAILY_TASKS.SCOPE_PERSONAL : DAILY_TASKS.SCOPE_HOUSEHOLD}
+                </button>
+              )
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: '#595d6c', marginTop: 6 }}>
+            {draft.scope === 'personal'
+              ? 'Only visible to you'
+              : 'Visible to all household members'}
+          </div>
+        </div>
+
+        {/* Time (optional) */}
+        <div style={{ marginBottom: 24 }}>
+          <label style={LABEL_STYLE}>{DAILY_TASKS.SLIDE_TIME_LABEL}</label>
+          {/* Presets + No time */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+            <button
+              onClick={() => setDraft({ ...draft, time: '' })}
+              style={{
+                padding: '8px 14px',
+                borderRadius: 20,
+                cursor: 'pointer',
+                fontSize: 13,
+                background: draft.time === '' ? 'rgba(145,132,217,0.16)' : 'rgba(233,233,237,0.04)',
+                border: `1px solid ${draft.time === '' ? '#9184d9' : 'rgba(233,233,237,0.08)'}`,
+                color: draft.time === '' ? '#e9e9ed' : '#9397ab',
+                transition: 'all .2s ease',
+              }}
+            >
+              {DAILY_TASKS.SLIDE_TIME_NONE}
+            </button>
             {DAILY_TASKS.TIME_PRESETS.map((t) => {
               const sel = draft.time === t
               return (
@@ -228,6 +262,31 @@ export default function TaskSlideOver({ open, onClose, onSave, soundRef }: TaskS
               )
             })}
           </div>
+          {/* Custom time input */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 12, color: '#595d6c', flexShrink: 0 }}>{DAILY_TASKS.SLIDE_TIME_CUSTOM}</span>
+            <input
+              type="time"
+              value={nativeValue}
+              onChange={(e) => {
+                const display = nativeToDisplay(e.target.value)
+                setDraft({ ...draft, time: display })
+              }}
+              style={{
+                background: 'rgba(233,233,237,0.05)',
+                border: '1px solid rgba(233,233,237,0.1)',
+                borderRadius: 10,
+                padding: '7px 12px',
+                fontSize: 13,
+                color: '#e9e9ed',
+                outline: 'none',
+                colorScheme: 'dark',
+                transition: 'border-color .2s ease',
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = '#9184d9' }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(233,233,237,0.1)' }}
+            />
+          </div>
         </div>
 
         {/* Log toggle */}
@@ -243,12 +302,8 @@ export default function TaskSlideOver({ open, onClose, onSave, soundRef }: TaskS
           }}
         >
           <div>
-            <div style={{ fontSize: 14, color: '#e9e9ed' }}>
-              {DAILY_TASKS.SLIDE_LOG_TOGGLE_LABEL}
-            </div>
-            <div style={{ fontSize: 12, color: '#595d6c', marginTop: 2 }}>
-              {DAILY_TASKS.SLIDE_LOG_TOGGLE_HINT}
-            </div>
+            <div style={{ fontSize: 14, color: '#e9e9ed' }}>{DAILY_TASKS.SLIDE_LOG_TOGGLE_LABEL}</div>
+            <div style={{ fontSize: 12, color: '#595d6c', marginTop: 2 }}>{DAILY_TASKS.SLIDE_LOG_TOGGLE_HINT}</div>
           </div>
           <button
             onClick={() => setDraft({ ...draft, logsToCalendar: !draft.logsToCalendar })}

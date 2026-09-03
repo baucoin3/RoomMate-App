@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import type { DailyTask, NocturneCalendarData } from '@/lib/types/dailyTasks'
-import type { TaskCategory } from '@/lib/types/dailyTasks'
+import type { DailyTask, NocturneCalendarData, NocturneCalendarEvent, TaskCategory } from '@/lib/types/dailyTasks'
 import { apiClient } from '@/lib/api/client'
 import { DAILY_TASKS } from '@/locales/en'
 import { SoundEngine } from './SoundEngine'
@@ -21,6 +20,23 @@ interface NocturneHomeProps {
   initialStreakDays: boolean[]
 }
 
+function formatTaskTime(timeOfDay: string | null): string {
+  if (!timeOfDay) return '—'
+  const [hStr, mStr] = timeOfDay.split(':')
+  const h = parseInt(hStr, 10)
+  const period = h < 12 ? 'AM' : 'PM'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${mStr} ${period}`
+}
+
+function sortTasks(list: DailyTask[]): DailyTask[] {
+  return [...list].sort((a, b) => {
+    if (!a.timeOfDay) return 1
+    if (!b.timeOfDay) return -1
+    return a.timeOfDay.localeCompare(b.timeOfDay)
+  })
+}
+
 export default function NocturneHome({
   householdId,
   initialTasks,
@@ -28,12 +44,13 @@ export default function NocturneHome({
   initialStreak,
   initialStreakDays,
 }: NocturneHomeProps) {
-  const [tab, setTab] = useState<Tab>('wheel')
+  const [tab, setTab] = useState<Tab>('today')
   const [tasks, setTasks] = useState<DailyTask[]>(initialTasks)
-  const [events] = useState<NocturneCalendarData>(initialEvents)
+  const [events, setEvents] = useState<NocturneCalendarData>(initialEvents)
   const [streak, setStreak] = useState(initialStreak)
   const [streakDays, setStreakDays] = useState(initialStreakDays)
   const [creating, setCreating] = useState(false)
+  const [resetting, setResetting] = useState(false)
   const [now] = useState(() => new Date())
 
   // Toast
@@ -44,10 +61,28 @@ export default function NocturneHome({
   const [springNonce, setSpringNonce] = useState(0)
   const [springIndex, setSpringIndex] = useState(0)
 
-  // Sound engine — created lazily on first user interaction
+  // Sound engine
   const soundRef = useRef<SoundEngine | null>(null)
   useEffect(() => {
     soundRef.current = new SoundEngine()
+  }, [])
+
+  // Auto-reset at the next 9am boundary
+  useEffect(() => {
+    const n = new Date()
+    const next9 = new Date(n)
+    next9.setHours(9, 0, 0, 0)
+    if (n >= next9) next9.setDate(next9.getDate() + 1)
+    const msUntil = next9.getTime() - n.getTime()
+
+    const timer = setTimeout(() => {
+      apiClient.get<{ data: DailyTask[] }>(`/api/dashboard/${householdId}/tasks`)
+        .then((res) => setTasks(res.data.data))
+        .catch((err) => console.error('[NocturneHome/9amReset]', err))
+    }, msUntil)
+
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function showToast(msg: string, color = '#9184d9') {
@@ -64,6 +99,21 @@ export default function NocturneHome({
     try {
       await apiClient.post(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
+
+      // Sync calendar immediately if this task logs to calendar
+      if (task.logsToCalendar) {
+        const liveToday = new Date().toLocaleDateString('en-CA')
+        const newEvent: NocturneCalendarEvent = {
+          time: formatTaskTime(task.timeOfDay),
+          title: task.title + ' — logged',
+          cat: task.category as TaskCategory,
+        }
+        setEvents((prev) => ({
+          ...prev,
+          [liveToday]: [...(prev[liveToday] ?? []), newEvent],
+        }))
+      }
+
       if (task.category === 'fitness' && task.logsToCalendar && !streakDays[6]) {
         const newStreak = streak + 1
         setStreak(newStreak)
@@ -75,11 +125,10 @@ export default function NocturneHome({
         const dateLabel = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
         showToast(DAILY_TASKS.TOAST_LOGGED(dateLabel, newStreak), 'oklch(0.734 0.125 289.2)')
       } else {
-        showToast('Task completed!')
+        showToast(DAILY_TASKS.TOAST_COMPLETED)
       }
     } catch (err) {
       console.error('[NocturneHome.handleComplete]', err)
-      // revert on failure
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
       showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
     }
@@ -91,6 +140,18 @@ export default function NocturneHome({
     try {
       await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
+
+      // Remove from calendar state immediately
+      if (task.logsToCalendar) {
+        const liveToday = new Date().toLocaleDateString('en-CA')
+        setEvents((prev) => {
+          const todayEvs = (prev[liveToday] ?? []).filter(
+            (ev) => ev.title !== task.title + ' — logged',
+          )
+          return { ...prev, [liveToday]: todayEvs }
+        })
+      }
+
       if (task.category === 'fitness' && task.logsToCalendar && streakDays[6]) {
         setStreak((s) => Math.max(0, s - 1))
         setStreakDays((prev) => {
@@ -106,16 +167,41 @@ export default function NocturneHome({
     }
   }
 
+  async function handleReset() {
+    if (resetting) return
+    setResetting(true)
+    // Optimistic update
+    const prevTasks = tasks
+    setTasks((prev) => prev.map((t) => ({ ...t, done: false })))
+    // Clear logged task events from today's calendar
+    const liveToday = new Date().toLocaleDateString('en-CA')
+    setEvents((prev) => ({
+      ...prev,
+      [liveToday]: (prev[liveToday] ?? []).filter((ev) => !ev.title.endsWith(' — logged')),
+    }))
+    try {
+      await apiClient.delete(`/api/dashboard/${householdId}/tasks/reset`)
+      showToast(DAILY_TASKS.TOAST_RESET, 'oklch(0.734 0.125 175)')
+    } catch (err) {
+      console.error('[NocturneHome.handleReset]', err)
+      setTasks(prevTasks)
+      showToast(DAILY_TASKS.ERRORS.RESET_FAILED, '#d97777')
+    } finally {
+      setResetting(false)
+    }
+  }
+
   async function handleSave(draft: TaskDraft) {
     if (!draft.category) return
     const res = await apiClient.post<{ data: DailyTask }>(`/api/dashboard/${householdId}/tasks`, {
       title: draft.title,
       category: draft.category as TaskCategory,
-      timeOfDay: draft.time,
+      timeOfDay: draft.time || null,
       logsToCalendar: draft.logsToCalendar,
+      scope: draft.scope,
     })
     const newTask = res.data.data
-    const next = [...tasks, newTask].sort((a, b) => a.timeOfDay.localeCompare(b.timeOfDay))
+    const next = sortTasks([...tasks, newTask])
     const idx = next.findIndex((t) => t.id === newTask.id)
     setTasks(next)
     setSpringIndex(idx)
@@ -193,19 +279,51 @@ export default function NocturneHome({
           )
         })}
         <div style={{ flex: 1 }} />
+        {/* Reset day button */}
+        <button
+          onClick={handleReset}
+          disabled={resetting}
+          title="Clear all completions for today"
+          style={{
+            height: 34,
+            padding: '0 14px',
+            borderRadius: 20,
+            cursor: resetting ? 'default' : 'pointer',
+            fontSize: 12,
+            background: 'transparent',
+            border: '1px solid rgba(233,233,237,0.1)',
+            color: '#595d6c',
+            opacity: resetting ? 0.5 : 1,
+            transition: 'all .25s ease',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
+          {DAILY_TASKS.RESET_DAY}
+        </button>
+        {/* Add task button */}
         <button
           onClick={openCreating}
           style={{
-            height: 34,
-            padding: '0 16px',
+            height: 42,
+            padding: '0 20px',
             borderRadius: 20,
             cursor: 'pointer',
-            fontSize: 13,
-            background: 'rgba(145,132,217,0.1)',
-            border: '1px solid rgba(145,132,217,0.3)',
+            fontSize: 15,
+            fontWeight: 500,
+            background: 'rgba(145,132,217,0.18)',
+            border: '1px solid rgba(145,132,217,0.45)',
             color: '#b5abfc',
+            boxShadow: '0 0 12px rgba(145,132,217,0.12)',
             transition: 'all .25s ease',
           }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(145,132,217,0.28)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(145,132,217,0.18)' }}
         >
           + {DAILY_TASKS.NEW_TASK}
         </button>
@@ -257,7 +375,11 @@ export default function NocturneHome({
             transition: 'opacity .45s ease, transform .55s cubic-bezier(.2,.8,.2,1)',
           }}
         >
-          <CalendarFilmStrip events={events} now={now} />
+          <CalendarFilmStrip
+            events={events}
+            now={now}
+            onScroll={() => soundRef.current?.playDetent()}
+          />
         </div>
 
         {/* Wheel panel */}
@@ -276,6 +398,7 @@ export default function NocturneHome({
         >
           <WheelPanel
             tasks={tasks}
+            now={now}
             soundRef={soundRef}
             springNonce={springNonce}
             springIndex={springIndex}

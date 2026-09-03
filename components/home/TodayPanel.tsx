@@ -20,7 +20,8 @@ function timeToMinutes(t: string): number {
   return h * 60 + parseInt(m[2], 10)
 }
 
-function formatTimeOfDay(timeOfDay: string): string {
+function formatTimeOfDay(timeOfDay: string | null): string {
+  if (!timeOfDay) return '—'
   const [hStr, mStr] = timeOfDay.split(':')
   const h = parseInt(hStr, 10)
   const mm = parseInt(mStr, 10)
