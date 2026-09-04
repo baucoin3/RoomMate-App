@@ -6,7 +6,7 @@ alwaysApply: true
 
 # Database Schema Reference
 
-**Project ID:** `inbexkcbkoilfpuwctkx` | **Region:** us-west-2 | **Postgres:** 17 | **Last verified:** 2026-06-04
+**Project ID:** `inbexkcbkoilfpuwctkx` | **Region:** us-west-2 | **Postgres:** 17 | **Last verified:** 2026-09-03
 
 **Refresh:** After migrations, re-run Supabase MCP `list_tables` (verbose) and `pg_policies` / `pg_proc` queries; update this file.
 
@@ -20,7 +20,7 @@ alwaysApply: true
 
 ---
 
-## RLS matrix (24 tables)
+## RLS matrix (27 tables)
 
 | Table | RLS | Policy coverage notes |
 |-------|-----|------------------------|
@@ -36,6 +36,9 @@ alwaysApply: true
 | `meal_logs` | ✅ | SELECT/INSERT for household; DELETE own `made_by_member_id` — **no UPDATE** |
 | `recurring_payment_reports` | ✅ | Member ALL own rows; payer SELECT on their recurring expenses |
 | `household_events` | ✅ | SELECT/INSERT/DELETE for members; INSERT requires `created_by` = caller's member id — **no UPDATE** |
+| `daily_tasks` | ✅ | SELECT/INSERT/UPDATE/DELETE for household members; personal tasks filtered at service layer by `created_by = userId` (not in RLS policy) |
+| `daily_task_completions` | ✅ | SELECT/INSERT/DELETE for household members |
+| `task_categories` | ✅ | SELECT/INSERT/DELETE for household members via EXISTS on `household_members` |
 | `shopping_lists` | ⚠️ | **No RLS** — exposed via anon key |
 | `shopping_list_items` | ⚠️ | **No RLS** |
 | `recipes` | ⚠️ | **No RLS** |
@@ -49,7 +52,7 @@ alwaysApply: true
 | `recurring_expenses` | ⚠️ | **No RLS** |
 | `recurring_expense_splits` | ⚠️ | **No RLS** |
 
-**Counts:** 12 with RLS ✅ · 12 without ⚠️
+**Counts:** 15 with RLS ✅ · 12 without ⚠️
 
 Do **not** `ENABLE ROW LEVEL SECURITY` without policies — that blocks all access. See [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security).
 
@@ -132,10 +135,13 @@ Client uploads: `components/receipts/ScanReceiptWizard.tsx`, `components/recipes
 - **`shopping_lists`** — `owner_type` enum; `user_id` or `household_id` per owner
 - **`shopping_list_items`** — `quantity`, `unit`, `is_checked`
 
-### Calendar
+### Calendar & Daily Tasks (✅ RLS)
 
 - **`meal_logs`** — `recipe_id`, `made_by_member_id`, `made_at` (date)
-- **`household_events`** — `date`, `title` (1–100 chars), `note`, `created_by` → member
+- **`household_events`** — `date`, `title` (1–100 chars), `note`, `created_by` → member id, `scope` (text: `'household'` | `'personal'`, default `'household'`), `created_by_user_id` → auth.users (used to filter personal events; `scope='personal'` events visible only to their creator)
+- **`daily_tasks`** — `household_id`, `title`, `category` (text — stores the category **name**, not an ID), `time_of_day` (time, nullable, stored as `HH:MM:SS`), `logs_to_calendar` (bool), `created_by` → auth.users, `scope` (text: `'personal'` | `'household'`); personal tasks only visible to their creator (filtered at service layer with `.or('scope.eq.household,and(scope.eq.personal,created_by.eq.{userId})')`). Day resets at **9 AM** (not midnight) — `getCurrentPeriodDate()` in `lib/services/dailyTasks.ts`.
+- **`daily_task_completions`** — `task_id` → daily_tasks, `completed_on` (date `YYYY-MM-DD`), `completed_by` → auth.users; unique `(task_id, completed_on)` (one completion record per task per calendar day regardless of user). Tasks are **template-based** — created once, completed daily via this table.
+- **`task_categories`** — `household_id` → households (ON DELETE CASCADE), `name` (text), `color` (text, oklch format e.g. `oklch(0.734 0.125 289.2)`); unique `(household_id, name)`. Auto-seeds 4 defaults (fitness/home/work/errands) on first fetch if household has none. Category name is stored as-is in `daily_tasks.category` (text FK by value, not UUID).
 
 ---
 
@@ -154,8 +160,13 @@ auth.users
         ├── recipes ──► ingredients, steps | recipe_tags
         ├── shopping_lists ──► shopping_list_items
         ├── meal_logs, household_events
+        ├── task_categories  [household_id FK, name+color]
+        └── daily_tasks ──► daily_task_completions
+              [category stores task_categories.name as text]
         └── (finances/shopping/recipes: 12 tables without RLS)
 auth.users ──► shopping_lists [owner_type = user]
+auth.users ──► daily_tasks.created_by, daily_task_completions.completed_by
+auth.users ──► household_events.created_by_user_id [for personal event filtering]
 ```
 
 ---
@@ -184,8 +195,21 @@ auth.users ──► shopping_lists [owner_type = user]
 | `meal_logs` + calendar reads (`household_events`, bills, receipts) | `lib/services/mealLogs.ts` |
 | `shopping_lists`, `shopping_list_items` | `lib/services/shopping.ts` |
 | Dashboard aggregate | `lib/services/dashboard.ts` |
+| `daily_tasks`, `daily_task_completions` | `lib/services/dailyTasks.ts` |
+| `task_categories` | `lib/services/taskCategories.ts` |
 
 **Exception:** `app/api/dashboard/[householdId]/events/*.ts` queries `household_events` in the route — prefer extracting to a service when editing.
+
+### Daily tasks API routes
+
+| Route | Methods | Notes |
+|-------|---------|-------|
+| `app/api/dashboard/[householdId]/tasks` | GET, POST | List tasks + today's completions; POST validates category against `task_categories` table |
+| `app/api/dashboard/[householdId]/tasks/[taskId]` | PATCH, DELETE | Edit or hard-delete a task; DELETE also removes all completions |
+| `app/api/dashboard/[householdId]/tasks/[taskId]/complete` | POST, DELETE | Complete/uncomplete; DELETE accepts optional `?date=YYYY-MM-DD` for past-day uncomplete |
+| `app/api/dashboard/[householdId]/tasks/reset` | DELETE | Clears all of today's completions for the user |
+| `app/api/dashboard/[householdId]/task-categories` | GET, POST | List (auto-seeds 4 defaults if empty) + create |
+| `app/api/dashboard/[householdId]/task-categories/[categoryId]` | DELETE | Blocked (409) if any tasks reference that category name |
 
 **Migrations:** `supabase/migrations/` (history); live DB may differ until migrations are applied everywhere.
 

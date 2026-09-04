@@ -42,7 +42,7 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const supabase = createClient()
 
@@ -56,8 +56,14 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: HOUSEHOLDS.ERRORS.FORBIDDEN }, { status: 403 })
     }
 
-    const today = getCurrentPeriodDate()
-    const { error } = await uncompleteDailyTask(supabase, params.taskId, user.id, today)
+    // Optional ?date=YYYY-MM-DD lets callers uncomplete a specific past day
+    const dateParam = request.nextUrl.searchParams.get('date')
+    const date =
+      dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)
+        ? dateParam
+        : getCurrentPeriodDate()
+
+    const { error } = await uncompleteDailyTask(supabase, params.taskId, user.id, date)
     if (error) return NextResponse.json({ error }, { status: 400 })
 
     return NextResponse.json({ data: null })

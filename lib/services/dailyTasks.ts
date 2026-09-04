@@ -3,10 +3,12 @@ import type {
   DailyTask,
   DailyTaskCompletion,
   CreateDailyTaskPayload,
+  UpdateDailyTaskPayload,
   NocturneCalendarData,
   NocturneCalendarEvent,
   TaskCategory,
   TaskScope,
+  WeeklyRate,
 } from '@/lib/types/dailyTasks'
 
 // The "day" resets at 9am, not midnight. Before 9am we're still in yesterday's period.
@@ -337,8 +339,130 @@ export async function resetDailyTasksForToday(
   }
 }
 
+export async function updateDailyTask(
+  supabase: SupabaseClient,
+  taskId: string,
+  householdId: string,
+  userId: string,
+  payload: UpdateDailyTaskPayload,
+): Promise<{ data: DailyTask | null; error: string | null }> {
+  try {
+    const updates: Record<string, unknown> = {}
+    if (payload.title !== undefined) updates.title = payload.title
+    if (payload.category !== undefined) updates.category = payload.category
+    if (payload.timeOfDay !== undefined) updates.time_of_day = payload.timeOfDay
+    if (payload.logsToCalendar !== undefined) updates.logs_to_calendar = payload.logsToCalendar
+    if (payload.scope !== undefined) updates.scope = payload.scope
+
+    const { data, error } = await supabase
+      .from('daily_tasks')
+      .update(updates)
+      .eq('id', taskId)
+      .eq('household_id', householdId)
+      .select('id, household_id, title, category, time_of_day, logs_to_calendar, created_by, created_at, scope')
+      .single()
+
+    if (error) return { data: null, error: error.message }
+
+    const today = getCurrentPeriodDate()
+    const { data: comp } = await supabase
+      .from('daily_task_completions')
+      .select('task_id')
+      .eq('task_id', taskId)
+      .eq('completed_on', today)
+      .maybeSingle()
+
+    return {
+      data: {
+        id: data.id as string,
+        householdId: data.household_id as string,
+        title: data.title as string,
+        category: data.category as TaskCategory,
+        timeOfDay: (data.time_of_day as string | null) ?? null,
+        logsToCalendar: data.logs_to_calendar as boolean,
+        createdBy: data.created_by as string,
+        createdAt: data.created_at as string,
+        done: comp !== null,
+        scope: (data.scope as TaskScope) ?? 'personal',
+      },
+      error: null,
+    }
+  } catch (err) {
+    console.error('[dailyTasks/updateDailyTask]', err)
+    return { data: null, error: 'Failed to update task.' }
+  }
+}
+
+export async function deleteDailyTask(
+  supabase: SupabaseClient,
+  taskId: string,
+  householdId: string,
+): Promise<{ error: string | null }> {
+  try {
+    // Completions are deleted via ON DELETE CASCADE if FK is set, otherwise delete manually
+    await supabase.from('daily_task_completions').delete().eq('task_id', taskId)
+
+    const { error } = await supabase
+      .from('daily_tasks')
+      .delete()
+      .eq('id', taskId)
+      .eq('household_id', householdId)
+
+    if (error) return { error: error.message }
+    return { error: null }
+  } catch (err) {
+    console.error('[dailyTasks/deleteDailyTask]', err)
+    return { error: 'Failed to delete task.' }
+  }
+}
+
+export async function getWeeklyCompletionRate(
+  supabase: SupabaseClient,
+  householdId: string,
+  userId: string,
+): Promise<WeeklyRate> {
+  try {
+    const today = new Date()
+    const sixDaysAgo = new Date(today)
+    sixDaysAgo.setDate(sixDaysAgo.getDate() - 6)
+    const startDate = sixDaysAgo.toLocaleDateString('en-CA')
+    const endDate = today.toLocaleDateString('en-CA')
+
+    // Get all tasks visible to this user
+    const { data: tasks } = await supabase
+      .from('daily_tasks')
+      .select('id')
+      .eq('household_id', householdId)
+      .or(`scope.eq.household,and(scope.eq.personal,created_by.eq.${userId})`)
+
+    if (!tasks?.length) return { rate: 0, completedDays: 0 }
+
+    const taskIds = tasks.map((t) => t.id as string)
+
+    const { data: completions } = await supabase
+      .from('daily_task_completions')
+      .select('completed_on')
+      .in('task_id', taskIds)
+      .gte('completed_on', startDate)
+      .lte('completed_on', endDate)
+
+    const activeDays = new Set((completions ?? []).map((c) => c.completed_on as string))
+    const completedDays = activeDays.size
+
+    return {
+      rate: Math.round((completedDays / 7) * 100),
+      completedDays,
+    }
+  } catch (err) {
+    console.error('[dailyTasks/getWeeklyCompletionRate]', err)
+    return { rate: 0, completedDays: 0 }
+  }
+}
+
 type CompletionRow = {
+  id: string
   completed_on: string
+  task_id: string
   daily_tasks: {
     title: string
     category: string
@@ -348,24 +472,33 @@ type CompletionRow = {
   }
 }
 
+type HouseholdEventRow = {
+  id: string
+  date: string
+  title: string
+  scope: string
+  created_by_user_id: string | null
+}
+
 export async function getCalendarEventsForDateRange(
   supabase: SupabaseClient,
   householdId: string,
   startDate: string,
   endDate: string,
+  userId?: string,
 ): Promise<{ data: NocturneCalendarData | null; error: string | null }> {
   try {
     const [eventsResult, completionsResult] = await Promise.all([
       supabase
         .from('household_events')
-        .select('date, title')
+        .select('id, date, title, scope, created_by_user_id')
         .eq('household_id', householdId)
         .gte('date', startDate)
         .lte('date', endDate)
         .order('date'),
       supabase
         .from('daily_task_completions')
-        .select('completed_on, daily_tasks!inner(title, category, time_of_day, logs_to_calendar, household_id)')
+        .select('id, task_id, completed_on, daily_tasks!inner(title, category, time_of_day, logs_to_calendar, household_id)')
         .eq('daily_tasks.household_id', householdId)
         .eq('daily_tasks.logs_to_calendar', true)
         .gte('completed_on', startDate)
@@ -374,10 +507,12 @@ export async function getCalendarEventsForDateRange(
 
     const result: NocturneCalendarData = {}
 
-    for (const ev of eventsResult.data ?? []) {
-      const k = ev.date as string
+    for (const ev of (eventsResult.data ?? []) as unknown as HouseholdEventRow[]) {
+      // Filter personal events to their owner only
+      if (ev.scope === 'personal' && ev.created_by_user_id !== userId) continue
+      const k = ev.date
       if (!result[k]) result[k] = []
-      result[k].push({ time: '—', title: ev.title as string, cat: 'home' })
+      result[k].push({ time: '—', title: ev.title, cat: 'home', eventId: ev.id })
     }
 
     for (const comp of (completionsResult.data ?? []) as unknown as CompletionRow[]) {
@@ -387,6 +522,7 @@ export async function getCalendarEventsForDateRange(
         time: comp.daily_tasks.time_of_day ? formatTimeOfDay(comp.daily_tasks.time_of_day) : '—',
         title: comp.daily_tasks.title + ' — logged',
         cat: comp.daily_tasks.category as TaskCategory,
+        taskId: comp.task_id,
       }
       result[k].push(ev)
     }

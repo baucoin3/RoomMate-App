@@ -2,13 +2,12 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { ERRORS, HOUSEHOLDS, DAILY_TASKS } from '@/locales/en'
 import { getDailyTasks, createDailyTask, timeDisplayToTimeOfDay } from '@/lib/services/dailyTasks'
-import type { CreateDailyTaskPayload, TaskCategory, TaskScope } from '@/lib/types/dailyTasks'
+import type { CreateDailyTaskPayload, TaskScope } from '@/lib/types/dailyTasks'
 
 interface RouteParams {
   params: { householdId: string }
 }
 
-const VALID_CATEGORIES: TaskCategory[] = ['fitness', 'home', 'work', 'errands']
 const VALID_SCOPES: TaskScope[] = ['personal', 'household']
 
 export async function GET(_request: NextRequest, { params }: RouteParams) {
@@ -70,7 +69,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const title = typeof body.title === 'string' ? body.title.trim() : ''
-    const category = typeof body.category === 'string' ? body.category : ''
+    const category = typeof body.category === 'string' ? body.category.trim() : ''
     const timeOfDayRaw = typeof body.timeOfDay === 'string' ? body.timeOfDay.trim() : null
     const logsToCalendar = body.logsToCalendar === true
     const scope = typeof body.scope === 'string' && VALID_SCOPES.includes(body.scope as TaskScope)
@@ -80,7 +79,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (!title) {
       return NextResponse.json({ error: DAILY_TASKS.ERRORS.TITLE_REQUIRED }, { status: 400 })
     }
-    if (!VALID_CATEGORIES.includes(category as TaskCategory)) {
+    if (!category) {
+      return NextResponse.json({ error: DAILY_TASKS.ERRORS.CATEGORY_REQUIRED }, { status: 400 })
+    }
+
+    // Validate category against the household's dynamic category list
+    const { count: catCount, error: catCountError } = await supabase
+      .from('task_categories')
+      .select('id', { count: 'exact', head: true })
+      .eq('household_id', params.householdId)
+      .eq('name', category)
+
+    if (catCountError) {
+      console.error('[tasks/POST] category validation query failed', catCountError)
+      return NextResponse.json({ error: ERRORS.INTERNAL }, { status: 500 })
+    }
+    if ((catCount ?? 0) === 0) {
       return NextResponse.json({ error: DAILY_TASKS.ERRORS.CATEGORY_REQUIRED }, { status: 400 })
     }
 
@@ -98,7 +112,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const payload: CreateDailyTaskPayload = {
       title,
-      category: category as TaskCategory,
+      category,
       timeOfDay,
       logsToCalendar,
       scope,

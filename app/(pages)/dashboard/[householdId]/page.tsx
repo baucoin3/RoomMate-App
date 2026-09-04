@@ -5,7 +5,8 @@ import { createClient } from '@/lib/supabase/server'
 import { ROUTES } from '@/lib/constants/routes'
 import { ERRORS, NAV } from '@/locales/en'
 import { getDashboardData } from '@/lib/services/dashboard'
-import { getDailyTasks, getStreak, getStreakDays, getCalendarEventsForDateRange } from '@/lib/services/dailyTasks'
+import { getDailyTasks, getWeeklyCompletionRate, getCalendarEventsForDateRange } from '@/lib/services/dailyTasks'
+import { getTaskCategories } from '@/lib/services/taskCategories'
 import RecipesCard from '@/components/dashboard/RecipesCard'
 import RecentActivityFeed from '@/components/dashboard/RecentActivityFeed'
 import HouseholdCalendar from '@/components/dashboard/HouseholdCalendar'
@@ -47,18 +48,18 @@ export default async function HouseholdHubPage({ params }: HouseholdHubPageProps
   }
 
   const now = new Date()
-  const todayISO = now.toLocaleDateString('en-CA')
 
-  const [dashboardResult, tasksResult, streak, streakDays, eventsResult] = await Promise.all([
+  const [dashboardResult, tasksResult, weeklyRate, categoriesResult, eventsResult] = await Promise.all([
     getDashboardData(supabase, params.householdId),
     getDailyTasks(supabase, params.householdId, user.id),
-    getStreak(supabase, params.householdId),
-    getStreakDays(supabase, params.householdId),
-    getCalendarEventsForDateRange(supabase, params.householdId, addDays(now, -4), addDays(now, 4)),
+    getWeeklyCompletionRate(supabase, params.householdId, user.id),
+    getTaskCategories(supabase, params.householdId),
+    getCalendarEventsForDateRange(supabase, params.householdId, addDays(now, -4), addDays(now, 4), user.id),
   ])
 
   const tasks = tasksResult.data ?? []
   const events = eventsResult.data ?? {}
+  const categories = categoriesResult.data ?? []
 
   return (
     <>
@@ -68,8 +69,8 @@ export default async function HouseholdHubPage({ params }: HouseholdHubPageProps
           householdId={params.householdId}
           initialTasks={tasks}
           initialEvents={events}
-          initialStreak={streak}
-          initialStreakDays={streakDays}
+          initialCategories={categories}
+          initialWeeklyRate={weeklyRate}
         />
       </div>
 

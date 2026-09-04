@@ -79,4 +79,34 @@ export class SoundEngine {
   playInvalid() {
     this.glass(320, 0.2, 0.05)
   }
+
+  playFlush() {
+    const ac = this.ctx()
+    if (!ac) return
+    const t0 = ac.currentTime
+    const bufferSize = Math.floor(ac.sampleRate * 0.65)
+    const buffer = ac.createBuffer(1, bufferSize, ac.sampleRate)
+    const data = buffer.getChannelData(0)
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1
+
+    const source = ac.createBufferSource()
+    source.buffer = buffer
+
+    const filter = ac.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.setValueAtTime(2200, t0)
+    filter.frequency.exponentialRampToValueAtTime(180, t0 + 0.55)
+    filter.Q.value = 1.8
+
+    const gain = ac.createGain()
+    gain.gain.setValueAtTime(0, t0)
+    gain.gain.linearRampToValueAtTime(0.18, t0 + 0.04)
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.65)
+
+    source.connect(filter)
+    filter.connect(gain)
+    gain.connect(ac.destination)
+    source.start(t0)
+    source.stop(t0 + 0.65)
+  }
 }

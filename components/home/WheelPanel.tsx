@@ -10,20 +10,16 @@ const THETA = 0.202
 const R = 1180
 const CARD_W = 236
 const CARD_H = 296
-// Pointer must move past this many px before the wheel treats it as a drag.
-// Below it, the wheel stays still so a click's card doesn't repaint out from
-// under the cursor (which makes the browser swallow the `click`).
 const DRAG_THRESHOLD = 6
 
-const CATS = {
-  fitness: 'oklch(0.734 0.125 289.2)',
-  home: 'oklch(0.734 0.125 175)',
-  work: 'oklch(0.734 0.125 245)',
-  errands: 'oklch(0.734 0.125 45)',
-} as const
+function catColor(cat: string, map: Record<string, string>): string {
+  return map[cat] ?? 'rgba(233,233,237,0.3)'
+}
 
-function catColorWithAlpha(cat: keyof typeof CATS, alpha: number): string {
-  return CATS[cat].replace(')', ` / ${alpha.toFixed(2)})`)
+function catColorWithAlpha(cat: string, map: Record<string, string>, alpha: number): string {
+  const c = catColor(cat, map)
+  // Works for both oklch(...) and rgba(...) formats
+  return c.endsWith(')') ? c.slice(0, -1) + ` / ${alpha.toFixed(2)})` : c
 }
 
 function formatTaskTime(timeOfDay: string | null): string {
@@ -40,24 +36,26 @@ function timeOfDayToMins(timeOfDay: string): number {
   return parseInt(hStr, 10) * 60 + parseInt(mStr, 10)
 }
 
+function capitalizeFirst(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''
+}
+
 interface WheelPanelProps {
   tasks: DailyTask[]
   now: Date
+  isActive: boolean
+  categoryMap: Record<string, string>
   soundRef: { current: SoundEngine | null }
   springNonce: number
   springIndex: number
   onComplete: (taskId: string) => Promise<void>
   onUncomplete: (taskId: string) => Promise<void>
+  onJackpot?: () => void
 }
 
 export default function WheelPanel({
-  tasks,
-  now,
-  soundRef,
-  springNonce,
-  springIndex,
-  onComplete,
-  onUncomplete,
+  tasks, now, isActive, categoryMap, soundRef,
+  springNonce, springIndex, onComplete, onUncomplete, onJackpot,
 }: WheelPanelProps) {
   const nowMins = now.getHours() * 60 + now.getMinutes()
   const posRef = useRef(0)
@@ -66,8 +64,8 @@ export default function WheelPanel({
   const rafRef = useRef<number | null>(null)
   const lastDetentRef = useRef(0)
   const [burst, setBurst] = useState<{ color: string; key: number } | null>(null)
+  const completingRef = useRef(false)
 
-  // Spring to springIndex when nonce changes (skip initial mount)
   const prevNonceRef = useRef(springNonce)
   useEffect(() => {
     if (springNonce === prevNonceRef.current) return
@@ -104,7 +102,6 @@ export default function WheelPanel({
     startSpring()
   }
 
-  // Scroll / wheel
   const lastScrollRef = useRef(0)
   function handleWheel(e: React.WheelEvent) {
     e.preventDefault()
@@ -115,32 +112,12 @@ export default function WheelPanel({
     springTo(Math.round(targetRef.current) + (delta > 0 ? 1 : -1))
   }
 
-  // Drag — the wheel only reacts once the pointer clears DRAG_THRESHOLD, so a
-  // plain click leaves it perfectly still and the card's `click` fires reliably.
-  const dragRef = useRef({
-    active: false,
-    dragging: false,
-    startX: 0,
-    startY: 0,
-    startTarget: 0,
-    pointerId: -1,
-  })
+  const dragRef = useRef({ active: false, dragging: false, startX: 0, startY: 0, startTarget: 0, pointerId: -1 })
 
   function handlePointerDown(e: React.PointerEvent) {
-    // Freeze any in-flight settle so the pressed card can't drift under the cursor.
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current)
-      rafRef.current = null
-    }
+    if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
     targetRef.current = posRef.current
-    dragRef.current = {
-      active: true,
-      dragging: false,
-      startX: e.clientX,
-      startY: e.clientY,
-      startTarget: posRef.current,
-      pointerId: e.pointerId,
-    }
+    dragRef.current = { active: true, dragging: false, startX: e.clientX, startY: e.clientY, startTarget: posRef.current, pointerId: e.pointerId }
   }
 
   function handlePointerMove(e: React.PointerEvent) {
@@ -162,14 +139,14 @@ export default function WheelPanel({
     if (!drag.active) return
     drag.active = false
     drag.dragging = false
-    // Runs after any `click` has already dispatched, so it never steals a tap.
     targetRef.current = Math.round(posRef.current)
     startSpring()
   }
 
-  // Keyboard
+  // Arrow keys — gated on isActive
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
+      if (!isActive) return
       if (e.key === 'ArrowLeft') {
         targetRef.current = Math.max(0, Math.round(targetRef.current) - 1)
         startSpring()
@@ -182,60 +159,49 @@ export default function WheelPanel({
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks.length])
+  }, [isActive, tasks.length])
 
   async function handleCardClick(task: DailyTask, cardIndex: number) {
-    // Use the live wheel position, not the stale render-time offset.
-    if (Math.abs(cardIndex - posRef.current) >= 0.35) {
-      springTo(cardIndex)
-      return
-    }
+    if (Math.abs(cardIndex - posRef.current) >= 0.35) { springTo(cardIndex); return }
+    if (completingRef.current) return
+    completingRef.current = true
     soundRef.current?.playTap()
-    if (task.done) {
-      await onUncomplete(task.id)
-    } else {
-      await onComplete(task.id)
-      soundRef.current?.playComplete()
-      setBurst({ color: CATS[task.category], key: Date.now() })
+    try {
+      if (task.done) {
+        await onUncomplete(task.id)
+      } else {
+        await onComplete(task.id)
+        soundRef.current?.playComplete()
+        const color = catColor(task.category, categoryMap)
+        setBurst({ color, key: Date.now() })
+        if (onJackpot && Math.random() < 0.075) {
+          onJackpot()
+        }
+      }
+    } finally {
+      completingRef.current = false
     }
   }
 
   const centreIndex = Math.round(pos)
   const centreTask = tasks[centreIndex]
-  const centreLabel = centreTask
-    ? DAILY_TASKS.CATEGORIES[
-        centreTask.category.toUpperCase() as keyof typeof DAILY_TASKS.CATEGORIES
-      ]
-    : ''
+  const centreLabel = centreTask ? capitalizeFirst(centreTask.category) : ''
 
   return (
     <div
       style={{
-        position: 'relative',
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        paddingBottom: 26,
+        position: 'relative', height: '100%',
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        paddingTop: 24, paddingBottom: 26,
       }}
     >
       {/* Above-arc eyebrow */}
       <div style={{ textAlign: 'center', marginBottom: 18 }}>
-        <div
-          style={{
-            fontSize: 11,
-            letterSpacing: '0.2em',
-            color: '#75798c',
-            textTransform: 'uppercase',
-            minHeight: 16,
-          }}
-        >
+        <div style={{ fontSize: 11, letterSpacing: '0.2em', color: '#75798c', textTransform: 'uppercase', minHeight: 16 }}>
           {centreLabel}
         </div>
         {tasks.length > 0 && (
-          <div style={{ fontSize: 12, color: '#595d6c', marginTop: 4 }}>
-            {DAILY_TASKS.HINT_COMPLETE}
-          </div>
+          <div style={{ fontSize: 12, color: '#595d6c', marginTop: 4 }}>{DAILY_TASKS.HINT_COMPLETE}</div>
         )}
       </div>
 
@@ -247,28 +213,13 @@ export default function WheelPanel({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         style={{
-          position: 'relative',
-          width: '100%',
-          height: CARD_H + 60,
-          overflow: 'hidden',
-          cursor: 'grab',
-          userSelect: 'none',
-          touchAction: 'none',
-          flex: 1,
+          position: 'relative', width: '100%', height: CARD_H + 60,
+          overflow: 'hidden', cursor: 'grab', userSelect: 'none',
+          touchAction: 'none', flex: 1,
         }}
       >
         {tasks.length === 0 ? (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 16,
-              color: '#595d6c',
-            }}
-          >
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, color: '#595d6c' }}>
             Add your first task to get started
           </div>
         ) : (
@@ -284,7 +235,7 @@ export default function WheelPanel({
             const opacity = Math.max(0, 1 - Math.abs(o) * 0.2)
             const focus = Math.max(0, 1 - Math.abs(o))
             const zIdx = 200 - Math.round(Math.abs(o) * 20)
-            const catColor = CATS[task.category]
+            const color = catColor(task.category, categoryMap)
             const taskMins = task.timeOfDay ? timeOfDayToMins(task.timeOfDay) : null
             const isOverdue = taskMins !== null && nowMins > taskMins && !task.done
 
@@ -293,142 +244,74 @@ export default function WheelPanel({
                 key={task.id}
                 onClick={() => handleCardClick(task, cardIndex)}
                 style={{
-                  position: 'absolute',
-                  left: '50%',
-                  top: 0,
-                  width: CARD_W,
-                  height: CARD_H,
-                  padding: 22,
+                  position: 'absolute', left: '50%', top: 0,
+                  width: CARD_W, height: CARD_H, padding: 22,
                   borderRadius: 22,
                   background: task.done
                     ? 'rgba(30,32,44,0.62)'
                     : 'linear-gradient(160deg,rgba(35,37,50,0.9),rgba(20,22,34,0.86))',
                   backdropFilter: `blur(${(6 + focus * 8).toFixed(1)}px)`,
                   border: `1px solid ${
-                    isOverdue
-                      ? 'rgba(220,38,38,0.4)'
-                      : focus > 0.5
-                        ? 'rgba(145,132,217,0.5)'
-                        : 'rgba(233,233,237,0.09)'
+                    isOverdue ? 'rgba(220,38,38,0.4)'
+                      : focus > 0.5 ? 'rgba(145,132,217,0.5)'
+                      : 'rgba(233,233,237,0.09)'
                   }`,
                   boxShadow: [
                     `0 ${(14 + focus * 20).toFixed(0)}px ${(34 + focus * 30).toFixed(0)}px rgba(0,0,0,${(0.4 + focus * 0.2).toFixed(2)})`,
-                    `0 0 ${(focus * 52).toFixed(0)}px ${catColorWithAlpha(task.category, focus * 0.32)}`,
+                    `0 0 ${(focus * 52).toFixed(0)}px ${catColorWithAlpha(task.category, categoryMap, focus * 0.32)}`,
                     isOverdue ? 'inset 0 0 0 1px rgba(220,38,38,0.2), 0 0 28px rgba(220,38,38,0.14)' : '',
                   ].filter(Boolean).join(', '),
                   transform: `translate(-50%,0) translate(${x.toFixed(2)}px,${y.toFixed(2)}px) rotate(${rot.toFixed(3)}deg) scale(${scale.toFixed(3)})`,
-                  opacity,
-                  zIndex: zIdx,
+                  opacity, zIndex: zIdx,
                   cursor: Math.abs(o) < 0.35 ? 'pointer' : 'grab',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  boxSizing: 'border-box',
+                  display: 'flex', flexDirection: 'column', boxSizing: 'border-box',
                   transition: 'border-color .3s ease',
                 }}
               >
                 {/* Category eyebrow */}
-                <div
-                  style={{
-                    fontSize: 11,
-                    letterSpacing: '0.18em',
-                    textTransform: 'uppercase',
-                    color: task.done ? '#595d6c' : catColor,
-                  }}
-                >
-                  {DAILY_TASKS.CATEGORIES[
-                    task.category.toUpperCase() as keyof typeof DAILY_TASKS.CATEGORIES
-                  ]}
+                <div style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: task.done ? '#595d6c' : color }}>
+                  {capitalizeFirst(task.category)}
                 </div>
 
                 {/* Check circle */}
                 <div style={{ marginTop: 14 }}>
                   <div
                     style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: '50%',
-                      border: `1.5px solid ${task.done ? catColor : 'rgba(233,233,237,0.25)'}`,
-                      background: task.done ? catColor : 'transparent',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
+                      width: 22, height: 22, borderRadius: '50%',
+                      border: `1.5px solid ${task.done ? color : 'rgba(233,233,237,0.25)'}`,
+                      background: task.done ? color : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
                       transition: 'all .3s ease',
                     }}
                   >
                     {task.done && (
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-                        <path
-                          d="M2 6l3 3 5-5"
-                          stroke="#161826"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
+                        <path d="M2 6l3 3 5-5" stroke="#161826" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     )}
                   </div>
                 </div>
 
                 {/* Title */}
-                <div
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 400,
-                    color: task.done ? '#75798c' : '#e9e9ed',
-                    marginTop: 14,
-                    lineHeight: 1.3,
-                    flex: 1,
-                    textDecoration: task.done ? 'line-through' : 'none',
-                    overflowWrap: 'break-word',
-                  }}
-                >
+                <div style={{ fontSize: 20, fontWeight: 400, color: task.done ? '#75798c' : '#e9e9ed', marginTop: 14, lineHeight: 1.3, flex: 1, textDecoration: task.done ? 'line-through' : 'none', overflowWrap: 'break-word' }}>
                   {task.title}
                 </div>
 
                 {/* Time */}
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontVariantNumeric: 'tabular-nums',
-                    color: task.done ? '#595d6c' : '#75798c',
-                    marginTop: 8,
-                  }}
-                >
+                <div style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', color: task.done ? '#595d6c' : '#75798c', marginTop: 8 }}>
                   {formatTaskTime(task.timeOfDay)}
                 </div>
 
                 {/* Gradient bar */}
-                <div
-                  style={{
-                    height: 2,
-                    borderRadius: 1,
-                    marginTop: 10,
-                    background: task.done
-                      ? 'rgba(233,233,237,0.06)'
-                      : `linear-gradient(90deg,${catColor},transparent)`,
-                  }}
-                />
+                <div style={{ height: 2, borderRadius: 1, marginTop: 10, background: task.done ? 'rgba(233,233,237,0.06)' : `linear-gradient(90deg,${color},transparent)` }} />
               </div>
             )
           })
         )}
 
-        {/* Burst — centered over the active card */}
         {burst && (
-          <div
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: 0,
-              transform: 'translateX(-50%)',
-              pointerEvents: 'none',
-            }}
-          >
-            <BurstAnimation
-              key={burst.key}
-              color={burst.color}
-              onDone={() => setBurst(null)}
-            />
+          <div style={{ position: 'absolute', left: '50%', top: 0, transform: 'translateX(-50%)', pointerEvents: 'none' }}>
+            <BurstAnimation key={burst.key} color={burst.color} onDone={() => setBurst(null)} />
           </div>
         )}
       </div>
@@ -443,9 +326,7 @@ export default function WheelPanel({
                 key={i}
                 onClick={() => springTo(i)}
                 style={{
-                  width: active ? 26 : 5,
-                  height: 5,
-                  borderRadius: 3,
+                  width: active ? 26 : 5, height: 5, borderRadius: 3,
                   background: active ? '#9184d9' : 'rgba(233,233,237,0.15)',
                   cursor: 'pointer',
                   transition: 'width .35s ease, background .35s ease',

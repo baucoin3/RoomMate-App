@@ -33,11 +33,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: HOUSEHOLDS.ERRORS.FORBIDDEN }, { status: 403 })
     }
 
-    const body = (await request.json()) as { date?: unknown; title?: unknown; note?: unknown }
+    const body = (await request.json()) as { date?: unknown; title?: unknown; note?: unknown; scope?: unknown }
 
     const date = typeof body.date === 'string' ? body.date.trim() : ''
     const title = typeof body.title === 'string' ? body.title.trim() : ''
     const note = typeof body.note === 'string' && body.note.trim() ? body.note.trim() : null
+    const scope = body.scope === 'personal' ? 'personal' : 'household'
 
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return NextResponse.json({ error: 'A valid date (YYYY-MM-DD) is required.' }, { status: 400 })
@@ -56,7 +57,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         date,
         title,
         note,
+        scope,
         created_by: membership.id,
+        created_by_user_id: user.id,
       })
       .select('id, date, title, note')
       .single()

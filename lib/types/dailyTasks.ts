@@ -1,4 +1,4 @@
-export type TaskCategory = 'fitness' | 'home' | 'work' | 'errands'
+export type TaskCategory = string
 export type TaskScope = 'personal' | 'household'
 
 export interface DailyTask {
@@ -29,10 +29,25 @@ export interface CreateDailyTaskPayload {
   scope: TaskScope
 }
 
+export interface UpdateDailyTaskPayload {
+  title?: string
+  category?: TaskCategory
+  timeOfDay?: string | null
+  logsToCalendar?: boolean
+  scope?: TaskScope
+}
+
 export interface NocturneCalendarEvent {
   time: string    // "6:30 PM" format, or "—" if no time
   title: string
   cat: TaskCategory
+  taskId?: string   // present if this event comes from a daily_task completion
+  eventId?: string  // present if this event comes from a household_event
 }
 
 export type NocturneCalendarData = Record<string, NocturneCalendarEvent[]>
+
+export interface WeeklyRate {
+  rate: number         // 0–100
+  completedDays: number
+}
