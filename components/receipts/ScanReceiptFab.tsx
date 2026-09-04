@@ -46,7 +46,7 @@ export default function ScanReceiptFab({ householdId }: ScanReceiptFabProps) {
     <Link
       href={scanHref}
       aria-label={RECEIPTS.FAB_ARIA}
-      className="fixed bottom-20 right-5 md:bottom-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-500 text-white shadow-lg transition-colors hover:bg-indigo-400 active:scale-95"
+      className="fixed bottom-20 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-500 text-white shadow-lg transition-colors hover:bg-indigo-400 active:scale-95 md:hidden"
     >
       <ScanIcon />
     </Link>

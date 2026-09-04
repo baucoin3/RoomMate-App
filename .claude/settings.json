@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Bash(find *)",
+      "Bash(grep *)",
+      "Bash(sort *)",
+      "Bash(xargs ls *)",
+      "Bash(xargs grep *)",
+      "Bash(npx tsc *)",
+      "Bash(npx next *)",
+      "Bash(python3 *)"
+    ]
+  }
+}
