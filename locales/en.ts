@@ -869,6 +869,12 @@ export const DAILY_TASKS = {
     ERRANDS: 'Errands',
   } as const,
   TIME_PRESETS: ['6:30 AM', '7:30 AM', '9:00 AM', '12:30 PM', '5:00 PM', '6:30 PM', '8:00 PM', '9:30 PM'] as const,
+  MOBILE_TAB_TASKS: 'Tasks',
+  MOBILE_DONE_BTN: 'Done',
+  MOBILE_UNDO_BTN: 'Undo',
+  MOBILE_SLIDE_SAVE: 'Add task',
+  MOBILE_MANAGE_EMPTY: 'No tasks yet. Tap + New task to get started.',
+  MOBILE_TOAST_TASK_ADDED: (name: string) => `"${name}" added`,
   ERRORS: {
     TITLE_REQUIRED: 'Task title is required.',
     CATEGORY_REQUIRED: 'Category is required.',
