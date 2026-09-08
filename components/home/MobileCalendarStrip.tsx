@@ -28,10 +28,11 @@ interface MobileCalendarStripProps {
   onDeleteEvent: (eventId: string, date: string) => Promise<void>
   onEditTask: (taskId: string) => void
   onTaskToggled: (taskId: string, date: string, currentlyDone: boolean) => Promise<void>
+  onEventToggled?: (eventId: string, date: string, currentlyDone: boolean) => Promise<void>
 }
 
 export default function MobileCalendarStrip({
-  events, now, categoryMap, onAddEvent, onDeleteEvent, onEditTask, onTaskToggled,
+  events, now, categoryMap, onAddEvent, onDeleteEvent, onEditTask, onTaskToggled, onEventToggled,
 }: MobileCalendarStripProps) {
   const todayISO = toISO(now)
   const [weekOffset, setWeekOffset] = useState(0)
@@ -231,13 +232,13 @@ export default function MobileCalendarStrip({
                   )
                 }
 
-                // ── Meal log row (non-interactive) ──────────────────────────────
+                // ── Meal log row (always done) ──────────────────────────────────
                 if (ev.type === 'meal') {
                   return (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 12, background: 'rgba(233,233,237,0.03)', border: '1px solid rgba(233,233,237,0.06)' }}>
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 12, background: 'rgba(233,233,237,0.03)', border: '1px solid rgba(233,233,237,0.06)', opacity: 0.55 }}>
                       <span style={{ width: 3, height: 20, borderRadius: 2, background: color, flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14, color: '#e9e9ed', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.title}</div>
+                        <div style={{ fontSize: 14, color: '#595d6c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'line-through' }}>{ev.title}</div>
                       </div>
                     </div>
                   )
@@ -253,12 +254,28 @@ export default function MobileCalendarStrip({
                       padding: '10px 12px', borderRadius: 12,
                       background: isConfirming ? 'rgba(220,38,38,0.08)' : 'rgba(233,233,237,0.03)',
                       border: `1px solid ${isConfirming ? 'rgba(220,38,38,0.2)' : 'rgba(233,233,237,0.06)'}`,
-                      transition: 'background .2s ease, border-color .2s ease',
+                      transition: 'background .2s ease, border-color .2s ease, opacity .25s ease',
+                      opacity: ev.done ? 0.55 : 1,
                     }}
                   >
-                    <span style={{ width: 3, height: 20, borderRadius: 2, background: color, flexShrink: 0 }} />
+                    <div
+                      onClick={() => ev.eventId && onEventToggled?.(ev.eventId, selectedISO, !!ev.done)}
+                      style={{
+                        width: 22, height: 22, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
+                        border: `1.5px solid ${ev.done ? color : 'rgba(233,233,237,0.25)'}`,
+                        background: ev.done ? color : 'transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        transition: 'all .2s ease',
+                      }}
+                    >
+                      {ev.done && (
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+                          <path d="M2 6l3 3 5-5" stroke="#161826" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, color: '#e9e9ed', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.title}</div>
+                      <div style={{ fontSize: 14, color: ev.done ? '#595d6c' : '#e9e9ed', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: ev.done ? 'line-through' : 'none' }}>{ev.title}</div>
                       {ev.time !== '—' && <div style={{ fontSize: 11, color: '#75798c', marginTop: 1 }}>{ev.time}</div>}
                     </div>
                     {isConfirming ? (

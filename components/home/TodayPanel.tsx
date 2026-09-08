@@ -41,14 +41,14 @@ export default function TodayPanel({ tasks, events, categoryMap, now, struggleSt
 
   // Unified list: incomplete items first, then completed
   const todoItems = events
-    .filter((ev) => ev.type !== 'task' || !ev.done)
+    .filter((ev) => !ev.done || (ev.type !== 'task' && ev.type !== 'meal' && ev.type !== 'event'))
     .sort((a, b) => {
       if (a.time === '—' && b.time === '—') return 0
       if (a.time === '—') return 1
       if (b.time === '—') return -1
       return timeToMinutes(a.time) - timeToMinutes(b.time)
     })
-  const completedItems = events.filter((ev) => ev.type === 'task' && ev.done)
+  const completedItems = events.filter((ev) => ev.done && (ev.type === 'task' || ev.type === 'meal' || ev.type === 'event'))
 
   const struggling = struggleStats.filter((s) => s.isStruggling)
   const doingWell = struggleStats.filter((s) => !s.isStruggling)

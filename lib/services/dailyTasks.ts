@@ -474,6 +474,7 @@ type HouseholdEventRow = {
   title: string
   scope: string
   created_by_user_id: string | null
+  completed: boolean | null
 }
 
 type MealLogCalRow = {
@@ -519,7 +520,7 @@ export async function getCalendarEventsForDateRange(
         : Promise.resolve({ data: [], error: null }),
       supabase
         .from('household_events')
-        .select('id, date, title, scope, created_by_user_id')
+        .select('id, date, title, scope, created_by_user_id, completed')
         .eq('household_id', householdId)
         .gte('date', startDate)
         .lte('date', endDate),
@@ -564,7 +565,7 @@ export async function getCalendarEventsForDateRange(
       // Household events for this date
       const dayEvents: NocturneCalendarEvent[] = ((eventsResult.data ?? []) as unknown as HouseholdEventRow[])
         .filter((ev) => ev.date === date && !(ev.scope === 'personal' && ev.created_by_user_id !== userId))
-        .map((ev) => ({ type: 'event' as const, time: '—', title: ev.title, cat: 'home' as TaskCategory, eventId: ev.id }))
+        .map((ev) => ({ type: 'event' as const, time: '—', title: ev.title, cat: 'home' as TaskCategory, eventId: ev.id, done: ev.completed ?? false }))
 
       // Meal logs for this date
       const dayMeals: NocturneCalendarEvent[] = ((mealLogsResult.data ?? []) as unknown as MealLogCalRow[])

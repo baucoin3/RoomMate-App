@@ -101,51 +101,39 @@ export default function NocturneMobile({
     const task = tasks.find((t) => t.id === taskId)
     if (!task) return
     setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
-    setEvents((prev) => {
-      const next = { ...prev }
-      for (const [date, evs] of Object.entries(next)) {
-        next[date] = evs.map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev)
-      }
-      return next
-    })
+    setEvents((prev) => ({
+      ...prev,
+      [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev),
+    }))
     try {
       await apiClient.post(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
       showToast(DAILY_TASKS.TOAST_COMPLETED, categoryMap[task.category] ?? '#9184d9')
     } catch (err) {
       console.error('[NocturneMobile.handleComplete]', err)
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
-      setEvents((prev) => {
-        const next = { ...prev }
-        for (const [date, evs] of Object.entries(next)) {
-          next[date] = evs.map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev)
-        }
-        return next
-      })
+      setEvents((prev) => ({
+        ...prev,
+        [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev),
+      }))
       showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
     }
   }
 
   async function handleUncomplete(taskId: string) {
     setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
-    setEvents((prev) => {
-      const next = { ...prev }
-      for (const [date, evs] of Object.entries(next)) {
-        next[date] = evs.map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev)
-      }
-      return next
-    })
+    setEvents((prev) => ({
+      ...prev,
+      [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev),
+    }))
     try {
       await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
     } catch (err) {
       console.error('[NocturneMobile.handleUncomplete]', err)
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
-      setEvents((prev) => {
-        const next = { ...prev }
-        for (const [date, evs] of Object.entries(next)) {
-          next[date] = evs.map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev)
-        }
-        return next
-      })
+      setEvents((prev) => ({
+        ...prev,
+        [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev),
+      }))
       showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
     }
   }
@@ -306,6 +294,24 @@ export default function NocturneMobile({
     showToast(DAILY_TASKS.TOAST_EVENT_DELETED)
   }
 
+  async function handleCalendarEventToggle(eventId: string, date: string, currentlyDone: boolean) {
+    setEvents((prev) => ({
+      ...prev,
+      [date]: (prev[date] ?? []).map((ev) => ev.eventId === eventId ? { ...ev, done: !currentlyDone } : ev),
+    }))
+    try {
+      await apiClient.patch(`/api/dashboard/${householdId}/events/${eventId}`, { completed: !currentlyDone })
+      showToast(currentlyDone ? DAILY_TASKS.TOAST_CALENDAR_UNDONE : DAILY_TASKS.TOAST_CALENDAR_DONE)
+    } catch (err) {
+      console.error('[NocturneMobile.handleCalendarEventToggle]', err)
+      setEvents((prev) => ({
+        ...prev,
+        [date]: (prev[date] ?? []).map((ev) => ev.eventId === eventId ? { ...ev, done: currentlyDone } : ev),
+      }))
+      showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
+    }
+  }
+
   function handleEditTaskFromCalendar(taskId: string) {
     const task = tasks.find((t) => t.id === taskId)
     if (!task) return
@@ -407,6 +413,7 @@ export default function NocturneMobile({
             onDeleteEvent={handleDeleteCalendarEvent}
             onEditTask={handleEditTaskFromCalendar}
             onTaskToggled={handleCalendarTaskToggle}
+            onEventToggled={handleCalendarEventToggle}
           />
         </div>
 

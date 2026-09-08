@@ -349,6 +349,20 @@ export default function MobileTaskCard({
           </svg>
         </button>
       </div>
+
+      {tasks.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
+          <div style={{
+            fontSize: 11, letterSpacing: '0.12em', color: '#9184d9',
+            background: 'rgba(145,132,217,0.1)',
+            border: '1px solid rgba(145,132,217,0.2)',
+            borderRadius: 20, padding: '3px 14px',
+            boxShadow: '0 0 10px rgba(145,132,217,0.15)',
+          }}>
+            {centreIndex + 1} / {tasks.length}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

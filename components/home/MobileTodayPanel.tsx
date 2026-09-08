@@ -22,8 +22,8 @@ export default function MobileTodayPanel({ tasks, events, categoryMap, struggleS
   const remaining = totalCount - doneCount
   const pct = totalCount === 0 ? 0 : Math.round((doneCount / totalCount) * 100)
 
-  const todoItems = events.filter((ev) => ev.type !== 'task' || !ev.done)
-  const completedItems = events.filter((ev) => ev.type === 'task' && ev.done)
+  const todoItems = events.filter((ev) => !ev.done || (ev.type !== 'task' && ev.type !== 'meal' && ev.type !== 'event'))
+  const completedItems = events.filter((ev) => ev.done && (ev.type === 'task' || ev.type === 'meal' || ev.type === 'event'))
 
   const struggling = struggleStats.filter((s) => s.isStruggling)
   const doingWell = struggleStats.filter((s) => !s.isStruggling)
