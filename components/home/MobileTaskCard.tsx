@@ -139,7 +139,7 @@ export default function MobileTaskCard({
         await onComplete(task.id)
         soundRef.current?.playComplete()
         setBurst({ color: catColor(task.category, categoryMap), key: Date.now() })
-        if (onJackpot && Math.random() < 0.075) onJackpot()
+        if (onJackpot && Math.random() < 0.15) onJackpot()
       }
     } finally {
       completingRef.current = false
@@ -156,12 +156,18 @@ export default function MobileTaskCard({
 
   const centreIndex = Math.round(pos)
   const centreTask = tasks[centreIndex]
+  const glowColor = centreTask ? (categoryMap[centreTask.category] ?? '#75798c') : '#75798c'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Category eyebrow */}
       <div style={{ textAlign: 'center', marginBottom: 10, flexShrink: 0 }}>
-        <div style={{ fontSize: 10, letterSpacing: '0.2em', color: '#75798c', textTransform: 'uppercase', minHeight: 14 }}>
+        <div style={{
+          fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', minHeight: 14, fontWeight: 600,
+          color: centreTask ? glowColor : '#75798c',
+          textShadow: centreTask ? `0 0 18px ${glowColor}90, 0 0 40px ${glowColor}40` : 'none',
+          transition: 'color .4s ease, text-shadow .4s ease',
+        }}>
           {centreTask ? capitalizeFirst(centreTask.category) : ''}
         </div>
       </div>

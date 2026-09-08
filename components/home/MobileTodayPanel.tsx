@@ -1,17 +1,7 @@
 'use client'
 
-import type { DailyTask, NocturneCalendarEvent, WeeklyRate } from '@/lib/types/dailyTasks'
+import type { DailyTask, NocturneCalendarEvent, WeeklyRate, TaskStruggleStat } from '@/lib/types/dailyTasks'
 import { DAILY_TASKS } from '@/locales/en'
-
-const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
-function timeToMinutes(t: string): number {
-  const m = /^(\d+):(\d+)\s*(AM|PM)$/i.exec(t.trim())
-  if (!m) return 99999
-  let h = parseInt(m[1], 10) % 12
-  if (m[3].toUpperCase() === 'PM') h += 12
-  return h * 60 + parseInt(m[2], 10)
-}
 
 function catColor(cat: string, map: Record<string, string>): string {
   return map[cat] ?? 'rgba(233,233,237,0.3)'
@@ -23,33 +13,25 @@ interface MobileTodayPanelProps {
   weeklyRate: WeeklyRate
   categoryMap: Record<string, string>
   now: Date
+  struggleStats: TaskStruggleStat[]
 }
 
-export default function MobileTodayPanel({ tasks, events, weeklyRate, categoryMap, now }: MobileTodayPanelProps) {
-  const nowMins = now.getHours() * 60 + now.getMinutes()
-
-  const upcoming = events.filter((e) => e.time !== '—' && timeToMinutes(e.time) >= nowMins)
-  const nextEvent = upcoming[0] ?? events.filter((e) => e.time !== '—').slice(-1)[0] ?? null
-
+export default function MobileTodayPanel({ tasks, events, categoryMap, struggleStats }: MobileTodayPanelProps) {
   const doneCount = tasks.filter((t) => t.done).length
   const totalCount = tasks.length
-  // circumference of r=36 circle: 2 * π * 36 ≈ 226.2
-  const ringOffset = totalCount === 0 ? 0 : 226.2 * (1 - doneCount / totalCount)
   const remaining = totalCount - doneCount
+  const pct = totalCount === 0 ? 0 : Math.round((doneCount / totalCount) * 100)
 
-  const ratePercent = weeklyRate.rate
-  const fillWidth = Math.round(ratePercent)
+  const todoItems = events.filter((ev) => ev.type !== 'task' || !ev.done)
+  const completedItems = events.filter((ev) => ev.type === 'task' && ev.done)
 
-  const pipDays = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(now)
-    d.setDate(d.getDate() - (6 - i))
-    return { label: DOW[d.getDay()][0], isToday: i === 6 }
-  })
+  const struggling = struggleStats.filter((s) => s.isStruggling)
+  const doingWell = struggleStats.filter((s) => !s.isStruggling)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%', overflowY: 'auto', paddingBottom: 16 }}>
 
-      {/* Progress + weekly rate card */}
+      {/* Progress ring card */}
       <div
         style={{
           border: '1px solid rgba(145,132,217,0.22)',
@@ -61,7 +43,6 @@ export default function MobileTodayPanel({ tasks, events, weeklyRate, categoryMa
       >
         <div style={{ position: 'absolute', right: -60, top: -60, width: 220, height: 220, borderRadius: '50%', background: 'radial-gradient(circle,rgba(145,132,217,0.12),transparent 65%)', pointerEvents: 'none' }} />
 
-        {/* Top row: ring + task count + weekly rate */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           {/* Ring */}
           <div style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
@@ -78,6 +59,7 @@ export default function MobileTodayPanel({ tasks, events, weeklyRate, categoryMa
             <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ fontSize: 20, fontWeight: 300, letterSpacing: '-0.02em', lineHeight: 1 }}>{doneCount}</span>
               <span style={{ fontSize: 9, color: '#75798c', lineHeight: 1, marginTop: 2 }}>of {totalCount}</span>
+              <span style={{ fontSize: 9, color: '#9397ab', marginTop: 1 }}>{pct}%</span>
             </div>
           </div>
 
@@ -93,54 +75,10 @@ export default function MobileTodayPanel({ tasks, events, weeklyRate, categoryMa
               {totalCount === 0 ? 'Add tasks above' : doneCount === totalCount ? 'Great work today' : `${doneCount} of ${totalCount} complete`}
             </div>
           </div>
-
-          {/* Weekly rate */}
-          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ fontSize: 9, letterSpacing: '0.12em', color: '#b5abfc', textTransform: 'uppercase' }}>
-              {DAILY_TASKS.WEEKLY_RATE_LABEL}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 1, justifyContent: 'flex-end', marginTop: 3 }}>
-              <span style={{ fontSize: 26, fontWeight: 300, letterSpacing: '-0.03em', color: '#e9e9ed', textShadow: '0 0 20px rgba(145,132,217,0.4)' }}>{ratePercent}</span>
-              <span style={{ fontSize: 13, color: '#9397ab', fontWeight: 300 }}>%</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Fill bar */}
-        <div style={{ marginTop: 14, height: 3, borderRadius: 2, background: 'rgba(233,233,237,0.07)', overflow: 'hidden' }}>
-          <div
-            style={{
-              height: '100%', width: `${fillWidth}%`, borderRadius: 2,
-              background: 'linear-gradient(90deg,#7c6fc4,#b5abfc)',
-              boxShadow: '0 0 8px rgba(145,132,217,0.5)',
-              transition: 'width .8s cubic-bezier(.2,.8,.2,1)',
-            }}
-          />
-        </div>
-
-        {/* Pip row */}
-        <div style={{ display: 'flex', gap: 4, marginTop: 10 }}>
-          {pipDays.map(({ label, isToday }, i) => (
-            <div
-              key={i}
-              style={{
-                flex: 1, height: 24, borderRadius: 5,
-                background: 'rgba(233,233,237,0.04)',
-                border: `1px solid ${isToday ? 'rgba(145,132,217,0.4)' : 'rgba(233,233,237,0.07)'}`,
-                display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 3,
-              }}
-            >
-              <span style={{ fontSize: 8, color: isToday ? '#b5abfc' : '#595d6c' }}>{label}</span>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ fontSize: 11, color: '#9397ab', marginTop: 8 }}>
-          {DAILY_TASKS.WEEKLY_RATE_DAYS(weeklyRate.completedDays)}
         </div>
       </div>
 
-      {/* Up Next */}
+      {/* Task list */}
       <div
         style={{
           border: '1px solid rgba(233,233,237,0.07)',
@@ -150,42 +88,45 @@ export default function MobileTodayPanel({ tasks, events, weeklyRate, categoryMa
           flexShrink: 0,
         }}
       >
-        <div style={{ fontSize: 10, letterSpacing: '0.2em', color: '#75798c', textTransform: 'uppercase', marginBottom: 10 }}>
-          {DAILY_TASKS.UP_NEXT}
+        <div style={{ fontSize: 10, letterSpacing: '0.2em', color: '#75798c', textTransform: 'uppercase', marginBottom: 12 }}>
+          {DAILY_TASKS.TODAY_TODO_LABEL}
         </div>
 
-        {nextEvent ? (
-          <>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-              <span style={{ fontSize: 24, fontWeight: 300, letterSpacing: '-0.02em', color: catColor(nextEvent.cat, categoryMap), flexShrink: 0 }}>
-                {nextEvent.time}
-              </span>
-              <span style={{ fontSize: 16, fontWeight: 400, color: '#e9e9ed', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {nextEvent.title.replace(' — logged', '')}
-              </span>
-            </div>
-            <div style={{ fontSize: 12, color: '#75798c', marginTop: 4 }}>
-              {(() => {
-                const gap = timeToMinutes(nextEvent.time) - nowMins
-                const catLabel = nextEvent.cat.charAt(0).toUpperCase() + nextEvent.cat.slice(1)
-                if (gap > 0) {
-                  const h = Math.floor(gap / 60)
-                  const m = gap % 60
-                  return `in ${h > 0 ? h + 'h ' : ''}${m}m · ${catLabel}`
-                }
-                return `earlier today · ${catLabel}`
-              })()}
-            </div>
-          </>
+        {todoItems.length === 0 && completedItems.length === 0 ? (
+          <div style={{ fontSize: 14, color: '#595d6c' }}>{DAILY_TASKS.NOTHING_SCHEDULED}</div>
         ) : (
-          <div style={{ fontSize: 15, color: '#595d6c' }}>{DAILY_TASKS.NOTHING_SCHEDULED}</div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {todoItems.map((ev, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(233,233,237,0.04)' }}>
+                <span style={{ width: 54, fontSize: 12, fontVariantNumeric: 'tabular-nums', color: '#9397ab', flexShrink: 0 }}>{ev.time}</span>
+                <span style={{ width: 3, height: 20, borderRadius: 2, background: catColor(ev.cat, categoryMap), boxShadow: `0 0 8px ${catColor(ev.cat, categoryMap)}`, flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: 14, color: '#e9e9ed', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.title}</span>
+                <span style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: catColor(ev.cat, categoryMap), opacity: 0.8, flexShrink: 0 }}>{ev.cat}</span>
+              </div>
+            ))}
+
+            {completedItems.length > 0 && (
+              <>
+                <div style={{ fontSize: 9, letterSpacing: '0.2em', color: '#595d6c', textTransform: 'uppercase', padding: '10px 0 4px' }}>
+                  {DAILY_TASKS.TODAY_COMPLETED_LABEL}
+                </div>
+                {completedItems.map((ev, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderBottom: '1px solid rgba(233,233,237,0.04)', opacity: 0.38 }}>
+                    <span style={{ width: 54, fontSize: 12, fontVariantNumeric: 'tabular-nums', color: '#595d6c', flexShrink: 0 }}>{ev.time}</span>
+                    <span style={{ width: 3, height: 18, borderRadius: 2, background: catColor(ev.cat, categoryMap), flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 13, color: '#595d6c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'line-through' }}>{ev.title}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
         )}
       </div>
 
-      {/* Schedule */}
+      {/* Struggle widget */}
       <div
         style={{
-          border: '1px solid rgba(233,233,237,0.07)',
+          border: '1px solid rgba(220,38,38,0.18)',
           borderRadius: 20,
           background: 'linear-gradient(155deg,rgba(35,37,50,0.9),rgba(22,24,38,0.55))',
           padding: '16px 18px',
@@ -193,31 +134,47 @@ export default function MobileTodayPanel({ tasks, events, weeklyRate, categoryMa
           minHeight: 0,
         }}
       >
-        <div style={{ fontSize: 10, letterSpacing: '0.2em', color: '#75798c', textTransform: 'uppercase', marginBottom: 12 }}>
-          {DAILY_TASKS.TODAY_SCHEDULE}
+        <div style={{ fontSize: 10, letterSpacing: '0.2em', color: '#f87171', textTransform: 'uppercase', marginBottom: 12, textShadow: '0 0 12px rgba(220,38,38,0.5)' }}>
+          {DAILY_TASKS.STRUGGLE_WIDGET_TITLE}
         </div>
 
-        {events.length === 0 ? (
-          <div style={{ fontSize: 14, color: '#595d6c', padding: '4px 0' }}>{DAILY_TASKS.NOTHING_SCHEDULED}</div>
+        {struggleStats.length === 0 ? (
+          <div style={{ fontSize: 14, color: '#595d6c' }}>{DAILY_TASKS.STRUGGLE_GOOD_STATE}</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {events.map((ev, i) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {struggling.map((s) => (
               <div
-                key={i}
-                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(233,233,237,0.04)' }}
+                key={s.taskId}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '8px 10px', borderRadius: 10,
+                  background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.2)',
+                  boxShadow: '0 0 10px rgba(220,38,38,0.06)',
+                }}
               >
-                <span style={{ width: 54, fontSize: 12, fontVariantNumeric: 'tabular-nums', color: '#9397ab', flexShrink: 0 }}>
-                  {ev.time}
-                </span>
-                <span style={{ width: 3, height: 20, borderRadius: 2, background: catColor(ev.cat, categoryMap), boxShadow: `0 0 8px ${catColor(ev.cat, categoryMap)}`, flexShrink: 0 }} />
-                <span style={{ flex: 1, fontSize: 14, color: '#e9e9ed', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {ev.title.replace(' — logged', '')}
-                </span>
-                <span style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: catColor(ev.cat, categoryMap), opacity: 0.8, flexShrink: 0 }}>
-                  {ev.cat}
-                </span>
+                <span style={{ fontSize: 13, color: '#f87171', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 8 }}>{s.title}</span>
+                <span style={{ fontSize: 11, color: 'rgba(248,113,113,0.7)', flexShrink: 0 }}>{DAILY_TASKS.STRUGGLE_DAYS(s.daysCompleted)}</span>
               </div>
             ))}
+            {struggling.length > 0 && doingWell.length > 0 && (
+              <div style={{ height: 1, background: 'rgba(233,233,237,0.06)', margin: '2px 0' }} />
+            )}
+            {doingWell.map((s) => (
+              <div
+                key={s.taskId}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '7px 10px', borderRadius: 10,
+                  background: 'rgba(52,211,153,0.06)', border: '1px solid rgba(52,211,153,0.14)',
+                }}
+              >
+                <span style={{ fontSize: 13, color: '#6ee7b7', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 8 }}>{s.title}</span>
+                <span style={{ fontSize: 11, color: 'rgba(110,231,183,0.7)', flexShrink: 0 }}>{DAILY_TASKS.STRUGGLE_DAYS(s.daysCompleted)}</span>
+              </div>
+            ))}
+            {struggling.length === 0 && (
+              <div style={{ fontSize: 14, color: '#6ee7b7' }}>{DAILY_TASKS.STRUGGLE_GOOD_STATE}</div>
+            )}
           </div>
         )}
       </div>

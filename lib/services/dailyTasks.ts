@@ -9,7 +9,9 @@ import type {
   TaskCategory,
   TaskScope,
   WeeklyRate,
+  TaskStruggleStat,
 } from '@/lib/types/dailyTasks'
+import { DAILY_TASKS } from '@/locales/en'
 
 // The "day" resets at 9am, not midnight. Before 9am we're still in yesterday's period.
 export function getCurrentPeriodDate(): string {
@@ -459,17 +461,11 @@ export async function getWeeklyCompletionRate(
   }
 }
 
-type CompletionRow = {
+type TaskRow = {
   id: string
-  completed_on: string
-  task_id: string
-  daily_tasks: {
-    title: string
-    category: string
-    time_of_day: string | null
-    logs_to_calendar: boolean
-    household_id: string
-  }
+  title: string
+  category: string
+  time_of_day: string | null
 }
 
 type HouseholdEventRow = {
@@ -480,6 +476,12 @@ type HouseholdEventRow = {
   created_by_user_id: string | null
 }
 
+type MealLogCalRow = {
+  id: string
+  made_at: string
+  recipes: { name: string } | null
+}
+
 export async function getCalendarEventsForDateRange(
   supabase: SupabaseClient,
   householdId: string,
@@ -488,56 +490,160 @@ export async function getCalendarEventsForDateRange(
   userId?: string,
 ): Promise<{ data: NocturneCalendarData | null; error: string | null }> {
   try {
-    const [eventsResult, completionsResult] = await Promise.all([
+    // Step 1: fetch all visible tasks for the household
+    const scopeFilter = userId
+      ? `scope.eq.household,and(scope.eq.personal,created_by.eq.${userId})`
+      : 'scope.eq.household'
+
+    const { data: taskRows, error: tasksError } = await supabase
+      .from('daily_tasks')
+      .select('id, title, category, time_of_day')
+      .eq('household_id', householdId)
+      .or(scopeFilter)
+      .order('time_of_day', { ascending: true, nullsFirst: false })
+
+    if (tasksError) return { data: null, error: tasksError.message }
+
+    const tasks = (taskRows ?? []) as unknown as TaskRow[]
+    const taskIds = tasks.map((t) => t.id)
+
+    // Step 2: fetch completions + household events + meal logs in parallel
+    const [completionsResult, eventsResult, mealLogsResult] = await Promise.all([
+      taskIds.length > 0
+        ? supabase
+            .from('daily_task_completions')
+            .select('task_id, completed_on')
+            .in('task_id', taskIds)
+            .gte('completed_on', startDate)
+            .lte('completed_on', endDate)
+        : Promise.resolve({ data: [], error: null }),
       supabase
         .from('household_events')
         .select('id, date, title, scope, created_by_user_id')
         .eq('household_id', householdId)
         .gte('date', startDate)
-        .lte('date', endDate)
-        .order('date'),
+        .lte('date', endDate),
       supabase
-        .from('daily_task_completions')
-        .select('id, task_id, completed_on, daily_tasks!inner(title, category, time_of_day, logs_to_calendar, household_id)')
-        .eq('daily_tasks.household_id', householdId)
-        .eq('daily_tasks.logs_to_calendar', true)
-        .gte('completed_on', startDate)
-        .lte('completed_on', endDate),
+        .from('meal_logs')
+        .select('id, made_at, recipes(name)')
+        .eq('household_id', householdId)
+        .gte('made_at', startDate)
+        .lte('made_at', endDate),
     ])
+
+    if (eventsResult.error) return { data: null, error: eventsResult.error.message }
+
+    // Build O(1) completion lookup: "taskId::date"
+    const completedSet = new Set<string>()
+    for (const c of (completionsResult.data ?? [])) {
+      completedSet.add(`${c.task_id as string}::${c.completed_on as string}`)
+    }
+
+    // Generate all dates in range
+    const dates: string[] = []
+    const cursor = new Date(startDate + 'T12:00:00')
+    const rangeEnd = new Date(endDate + 'T12:00:00')
+    while (cursor <= rangeEnd) {
+      dates.push(cursor.toLocaleDateString('en-CA'))
+      cursor.setDate(cursor.getDate() + 1)
+    }
 
     const result: NocturneCalendarData = {}
 
-    for (const ev of (eventsResult.data ?? []) as unknown as HouseholdEventRow[]) {
-      // Filter personal events to their owner only
-      if (ev.scope === 'personal' && ev.created_by_user_id !== userId) continue
-      const k = ev.date
-      if (!result[k]) result[k] = []
-      result[k].push({ time: '—', title: ev.title, cat: 'home', eventId: ev.id })
-    }
+    for (const date of dates) {
+      // Tasks: all visible tasks shown on every day
+      const taskEvents: NocturneCalendarEvent[] = tasks.map((t) => ({
+        type: 'task' as const,
+        time: t.time_of_day ? formatTimeOfDay(t.time_of_day) : '—',
+        title: t.title,
+        cat: t.category as TaskCategory,
+        done: completedSet.has(`${t.id}::${date}`),
+        taskId: t.id,
+      }))
 
-    for (const comp of (completionsResult.data ?? []) as unknown as CompletionRow[]) {
-      const k = comp.completed_on
-      if (!result[k]) result[k] = []
-      const ev: NocturneCalendarEvent = {
-        time: comp.daily_tasks.time_of_day ? formatTimeOfDay(comp.daily_tasks.time_of_day) : '—',
-        title: comp.daily_tasks.title + ' — logged',
-        cat: comp.daily_tasks.category as TaskCategory,
-        taskId: comp.task_id,
-      }
-      result[k].push(ev)
-    }
+      // Household events for this date
+      const dayEvents: NocturneCalendarEvent[] = ((eventsResult.data ?? []) as unknown as HouseholdEventRow[])
+        .filter((ev) => ev.date === date && !(ev.scope === 'personal' && ev.created_by_user_id !== userId))
+        .map((ev) => ({ type: 'event' as const, time: '—', title: ev.title, cat: 'home' as TaskCategory, eventId: ev.id }))
 
-    for (const k of Object.keys(result)) {
-      result[k].sort((a, b) => {
-        if (a.time === '—') return 1
-        if (b.time === '—') return -1
-        return timeDisplayToMinutes(a.time) - timeDisplayToMinutes(b.time)
-      })
+      // Meal logs for this date
+      const dayMeals: NocturneCalendarEvent[] = ((mealLogsResult.data ?? []) as unknown as MealLogCalRow[])
+        .filter((ml) => ml.made_at === date)
+        .map((ml) => ({
+          type: 'meal' as const,
+          time: '—',
+          title: `${DAILY_TASKS.MEAL_CAL_PREFIX}${ml.recipes?.name ?? 'a meal'}`,
+          cat: 'meals' as TaskCategory,
+          done: true,
+          mealLogId: ml.id,
+        }))
+
+      const combined = [...taskEvents, ...dayEvents, ...dayMeals]
+      if (combined.length > 0) result[date] = combined
     }
 
     return { data: result, error: null }
   } catch (err) {
     console.error('[dailyTasks/getCalendarEventsForDateRange]', err)
     return { data: null, error: 'Failed to load calendar events.' }
+  }
+}
+
+export async function getTaskStruggleStats(
+  supabase: SupabaseClient,
+  householdId: string,
+  userId: string,
+): Promise<{ data: TaskStruggleStat[] | null; error: string | null }> {
+  try {
+    const today = new Date()
+    const sixDaysAgo = new Date(today)
+    sixDaysAgo.setDate(sixDaysAgo.getDate() - 6)
+    const startDate = sixDaysAgo.toLocaleDateString('en-CA')
+    const endDate = today.toLocaleDateString('en-CA')
+
+    const { data: taskRows, error: tasksError } = await supabase
+      .from('daily_tasks')
+      .select('id, title, category')
+      .eq('household_id', householdId)
+      .or(`scope.eq.household,and(scope.eq.personal,created_by.eq.${userId})`)
+
+    if (tasksError) return { data: null, error: tasksError.message }
+    if (!taskRows?.length) return { data: [], error: null }
+
+    const taskIds = taskRows.map((t) => t.id as string)
+
+    const { data: completions, error: compError } = await supabase
+      .from('daily_task_completions')
+      .select('task_id, completed_on')
+      .in('task_id', taskIds)
+      .gte('completed_on', startDate)
+      .lte('completed_on', endDate)
+
+    if (compError) return { data: null, error: compError.message }
+
+    // Count distinct completed days per task
+    const taskDayMap = new Map<string, Set<string>>()
+    for (const t of taskRows) taskDayMap.set(t.id as string, new Set())
+    for (const c of (completions ?? [])) {
+      taskDayMap.get(c.task_id as string)?.add(c.completed_on as string)
+    }
+
+    const stats: TaskStruggleStat[] = taskRows
+      .map((t) => {
+        const daysCompleted = taskDayMap.get(t.id as string)?.size ?? 0
+        return {
+          taskId: t.id as string,
+          title: t.title as string,
+          category: t.category as string,
+          daysCompleted,
+          isStruggling: daysCompleted < 4,
+        }
+      })
+      .sort((a, b) => a.daysCompleted - b.daysCompleted)
+
+    return { data: stats, error: null }
+  } catch (err) {
+    console.error('[dailyTasks/getTaskStruggleStats]', err)
+    return { data: null, error: 'Failed to load task struggle stats.' }
   }
 }

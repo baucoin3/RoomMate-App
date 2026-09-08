@@ -11,9 +11,9 @@ export default function DashboardHeader() {
 
   return (
     <>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-gray-900">{HOUSEHOLDS.TITLE}</h1>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => setShowJoinModal(true)}
             className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-4 py-2 text-sm font-medium text-indigo-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50"

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { ROUTES } from '@/lib/constants/routes'
 import { ERRORS } from '@/locales/en'
-import { getDailyTasks, getWeeklyCompletionRate, getCalendarEventsForDateRange } from '@/lib/services/dailyTasks'
+import { getDailyTasks, getWeeklyCompletionRate, getCalendarEventsForDateRange, getTaskStruggleStats } from '@/lib/services/dailyTasks'
 import { getTaskCategories } from '@/lib/services/taskCategories'
 import NocturneHome from '@/components/home/NocturneHome'
 import NocturneMobile from '@/components/home/NocturneMobile'
@@ -40,16 +40,18 @@ export default async function HouseholdHubPage({ params }: HouseholdHubPageProps
 
   const now = new Date()
 
-  const [tasksResult, weeklyRate, categoriesResult, eventsResult] = await Promise.all([
+  const [tasksResult, weeklyRate, categoriesResult, eventsResult, struggleResult] = await Promise.all([
     getDailyTasks(supabase, params.householdId, user.id),
     getWeeklyCompletionRate(supabase, params.householdId, user.id),
     getTaskCategories(supabase, params.householdId),
     getCalendarEventsForDateRange(supabase, params.householdId, addDays(now, -4), addDays(now, 4), user.id),
+    getTaskStruggleStats(supabase, params.householdId, user.id),
   ])
 
   const tasks = tasksResult.data ?? []
   const events = eventsResult.data ?? {}
   const categories = categoriesResult.data ?? []
+  const initialStruggleStats = struggleResult.data ?? []
 
   const sharedProps = {
     householdId: params.householdId,
@@ -57,6 +59,7 @@ export default async function HouseholdHubPage({ params }: HouseholdHubPageProps
     initialEvents: events,
     initialCategories: categories,
     initialWeeklyRate: weeklyRate,
+    initialStruggleStats,
   }
 
   return (

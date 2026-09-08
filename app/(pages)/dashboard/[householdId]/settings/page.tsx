@@ -63,6 +63,8 @@ export default function SettingsPage() {
   const [householdItems, setHouseholdItems] = useState<HouseholdItem[]>([])
   const [recurring, setRecurring] = useState<RecurringExpense[]>([])
   const [members, setMembers] = useState<HouseholdMemberSummary[]>([])
+  const [inviteCode, setInviteCode] = useState('')
+  const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -73,17 +75,19 @@ export default function SettingsPage() {
       setLoading(true)
       setError('')
       try {
-        const [catsRes, itemsRes, recurringRes, membersRes] = await Promise.all([
+        const [catsRes, itemsRes, recurringRes, membersRes, householdRes] = await Promise.all([
           apiClient.get<{ data: ExpenseCategory[] }>(`/api/finances/categories?householdId=${householdId}`),
           apiClient.get<{ data: HouseholdItem[] }>(`/api/household-items/list?householdId=${householdId}`),
           apiClient.get<{ data: RecurringExpense[] }>(`/api/finances/recurring?householdId=${householdId}`),
           apiClient.get<{ data: HouseholdMemberSummary[] }>(`/api/households/${householdId}/members`),
+          apiClient.get<{ data: { invite_code: string } }>(`/api/households/${householdId}`),
         ])
         if (!cancelled) {
           setCategories(catsRes.data.data ?? [])
           setHouseholdItems(itemsRes.data.data ?? [])
           setRecurring(recurringRes.data.data ?? [])
           setMembers(membersRes.data.data ?? [])
+          setInviteCode(householdRes.data.data?.invite_code ?? '')
         }
       } catch (err) {
         if (!cancelled) setError(getErrorMessage(err))
@@ -95,6 +99,12 @@ export default function SettingsPage() {
     void fetchAll()
     return () => { cancelled = true }
   }, [householdId])
+
+  function handleCopy() {
+    navigator.clipboard.writeText(inviteCode)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'members', label: SETTINGS.TABS.MEMBERS },
@@ -169,6 +179,29 @@ export default function SettingsPage() {
               </ul>
             )}
           </AccordionSection>
+
+          {inviteCode && (
+            <div className="rounded-2xl bg-[#1c1c24] px-5 py-4">
+              <div className="text-xs font-semibold text-white mb-1">{SETTINGS.INVITE_CODE_LABEL}</div>
+              <div className="text-xs text-white/40 mb-3">{SETTINGS.INVITE_CODE_HINT}</div>
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-sm tracking-widest text-white bg-white/5 border border-white/10 rounded-lg px-3 py-2 flex-1 min-w-0 truncate">
+                  {inviteCode}
+                </span>
+                <button
+                  onClick={handleCopy}
+                  className="shrink-0 px-3 py-2 rounded-lg text-xs font-medium border transition-colors"
+                  style={{
+                    background: copied ? 'rgba(52,211,153,0.1)' : 'rgba(145,132,217,0.1)',
+                    borderColor: copied ? 'rgba(52,211,153,0.3)' : 'rgba(145,132,217,0.3)',
+                    color: copied ? '#34d399' : '#b5abfc',
+                  }}
+                >
+                  {copied ? SETTINGS.INVITE_CODE_COPIED : SETTINGS.INVITE_CODE_COPY}
+                </button>
+              </div>
+            </div>
+          )}
 
           <AccordionSection title={GUESTS.SECTION_TITLE}>
             <GuestsSection householdId={householdId} />

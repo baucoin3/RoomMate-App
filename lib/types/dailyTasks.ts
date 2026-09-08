@@ -38,11 +38,14 @@ export interface UpdateDailyTaskPayload {
 }
 
 export interface NocturneCalendarEvent {
-  time: string    // "6:30 PM" format, or "—" if no time
+  time: string       // "6:30 PM" format, or "—" if no time
   title: string
   cat: TaskCategory
-  taskId?: string   // present if this event comes from a daily_task completion
-  eventId?: string  // present if this event comes from a household_event
+  type: 'task' | 'event' | 'meal'
+  done?: boolean     // type='task' only — whether completed for this date
+  taskId?: string    // type='task'
+  eventId?: string   // type='event'
+  mealLogId?: string // type='meal'
 }
 
 export type NocturneCalendarData = Record<string, NocturneCalendarEvent[]>
@@ -50,4 +53,12 @@ export type NocturneCalendarData = Record<string, NocturneCalendarEvent[]>
 export interface WeeklyRate {
   rate: number         // 0–100
   completedDays: number
+}
+
+export interface TaskStruggleStat {
+  taskId: string
+  title: string
+  category: string
+  daysCompleted: number   // 0–7 (last 7 days)
+  isStruggling: boolean   // daysCompleted < 4
 }

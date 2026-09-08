@@ -17,7 +17,7 @@ async function verifyMembership(supabase: ReturnType<typeof createClient>, house
   return data
 }
 
-export async function POST(_request: NextRequest, { params }: RouteParams) {
+export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const supabase = createClient()
 
@@ -31,8 +31,14 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: HOUSEHOLDS.ERRORS.FORBIDDEN }, { status: 403 })
     }
 
-    const today = getCurrentPeriodDate()
-    const { data, error } = await completeDailyTask(supabase, params.taskId, user.id, today)
+    // Optional body.date lets callers complete a specific past/future day (e.g. from calendar)
+    let date = getCurrentPeriodDate()
+    try {
+      const body = await request.json() as { date?: string }
+      if (body.date && /^\d{4}-\d{2}-\d{2}$/.test(body.date)) date = body.date
+    } catch { /* no body is fine */ }
+
+    const { data, error } = await completeDailyTask(supabase, params.taskId, user.id, date)
     if (error) return NextResponse.json({ error }, { status: 400 })
 
     return NextResponse.json({ data }, { status: 201 })

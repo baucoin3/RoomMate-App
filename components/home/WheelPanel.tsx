@@ -174,7 +174,7 @@ export default function WheelPanel({
         soundRef.current?.playComplete()
         const color = catColor(task.category, categoryMap)
         setBurst({ color, key: Date.now() })
-        if (onJackpot && Math.random() < 0.075) {
+        if (onJackpot && Math.random() < 0.15) {
           onJackpot()
         }
       }
@@ -197,13 +197,24 @@ export default function WheelPanel({
     >
       {/* Above-arc eyebrow */}
       <div style={{ textAlign: 'center', marginBottom: 18 }}>
-        <div style={{ fontSize: 11, letterSpacing: '0.2em', color: '#75798c', textTransform: 'uppercase', minHeight: 16 }}>
-          {centreLabel}
-        </div>
+        {(() => {
+          const glowColor = centreTask ? (categoryMap[centreTask.category] ?? '#75798c') : '#75798c'
+          return (
+            <div style={{
+              fontSize: 12, letterSpacing: '0.2em', textTransform: 'uppercase', minHeight: 16, fontWeight: 600,
+              color: centreTask ? glowColor : '#75798c',
+              textShadow: centreTask ? `0 0 18px ${glowColor}90, 0 0 40px ${glowColor}40` : 'none',
+              transition: 'color .4s ease, text-shadow .4s ease',
+            }}>
+              {centreLabel}
+            </div>
+          )
+        })()}
         {tasks.length > 0 && (
           <div style={{ fontSize: 12, color: '#595d6c', marginTop: 4 }}>{DAILY_TASKS.HINT_COMPLETE}</div>
         )}
       </div>
+
 
       {/* Arc container */}
       <div

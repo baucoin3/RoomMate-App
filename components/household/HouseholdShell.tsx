@@ -89,6 +89,7 @@ export default function HouseholdShell({
   }, [])
 
   async function handleSignOut() {
+    setMenuOpen(false)
     setSigningOut(true)
     setSignOutError('')
     try {
@@ -278,7 +279,7 @@ export default function HouseholdShell({
         </div>
 
         {/* Top strip */}
-        <header className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0" style={{ position: 'relative', zIndex: 1 }}>
+        <header className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0" style={{ position: 'relative', zIndex: 20 }}>
           <div>
             <Link
               href={ROUTES.HOUSEHOLD(householdId)}
@@ -339,7 +340,7 @@ export default function HouseholdShell({
                 )}
                 <button
                   role="menuitem"
-                  onClick={handleSignOut}
+                  onClick={(e) => { e.stopPropagation(); void handleSignOut() }}
                   disabled={signingOut}
                   className="flex w-full items-center gap-2 px-4 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-60"
                 >

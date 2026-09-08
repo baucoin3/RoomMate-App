@@ -137,6 +137,7 @@ export default function MobileTaskSheet({
           display: 'flex', flexDirection: 'column',
           maxHeight: '88vh',
           overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
           padding: '0 0 env(safe-area-inset-bottom, 16px)',
         }}
       >
