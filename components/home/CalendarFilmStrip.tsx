@@ -26,7 +26,8 @@ interface CalendarFilmStripProps {
   onAddEvent?: (date: string, title: string, scope: TaskScope) => Promise<void>
   onEditTask?: (taskId: string) => void
   onDeleteEvent?: (eventId: string, date: string) => Promise<void>
-  onUncompleteTask?: (taskId: string, date: string) => Promise<void>
+  onTaskToggled?: (taskId: string, date: string, currentlyDone: boolean) => Promise<void>
+  onEventToggled?: (eventId: string, date: string, currentlyDone: boolean) => Promise<void>
 }
 
 const FADED_RULE: React.CSSProperties = {
@@ -37,7 +38,7 @@ const FADED_RULE: React.CSSProperties = {
 
 export default function CalendarFilmStrip({
   events, now, isActive, categoryMap, onScroll,
-  onAddEvent, onEditTask, onDeleteEvent, onUncompleteTask,
+  onAddEvent, onEditTask, onDeleteEvent, onTaskToggled, onEventToggled,
 }: CalendarFilmStripProps) {
   const todayISO = toISO(now)
   const [offset, setOffset] = useState(0)
@@ -63,17 +64,6 @@ export default function CalendarFilmStrip({
   function advance(delta: number) {
     setOffset((o) => o + delta)
     onScroll?.()
-  }
-
-  // Scroll wheel
-  const lastScrollRef = useRef(0)
-  function handleWheel(e: React.WheelEvent) {
-    e.preventDefault()
-    const t = Date.now()
-    if (t - lastScrollRef.current < 200) return
-    lastScrollRef.current = t
-    const delta = e.deltaX !== 0 ? e.deltaX : e.deltaY
-    advance(delta > 0 ? 1 : -1)
   }
 
   // Pointer drag (swipe) — capture is deferred until 5px of movement so that
@@ -125,7 +115,6 @@ export default function CalendarFilmStrip({
   return (
     <div
       style={{ display: 'flex', flexDirection: 'column', height: '100%', paddingBottom: 26 }}
-      onWheel={handleWheel}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -188,31 +177,57 @@ export default function CalendarFilmStrip({
                   )}
                 </div>
 
-                <div style={{ fontSize: 13, color: '#75798c', marginTop: 8 }}>
-                  {evs.length === 0 ? 'No events' : `${evs.length} event${evs.length === 1 ? '' : 's'}`}
-                </div>
+                {/* Summary line */}
+                {(() => {
+                  const taskEvs = evs.filter((e) => e.type === 'task')
+                  const doneCount = taskEvs.filter((e) => e.done).length
+                  const otherCount = evs.filter((e) => e.type !== 'task').length
+                  const parts: string[] = []
+                  if (taskEvs.length > 0) parts.push(`${doneCount}/${taskEvs.length} tasks done`)
+                  if (otherCount > 0) parts.push(`${otherCount} event${otherCount === 1 ? '' : 's'}`)
+                  return (
+                    <div style={{ fontSize: 13, color: '#75798c', marginTop: 8 }}>
+                      {parts.length === 0 ? 'No events' : parts.join(' · ')}
+                    </div>
+                  )
+                })()}
                 <div style={FADED_RULE} />
 
                 {/* Event list */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden', flex: 1 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'auto', flex: 1 }}>
                   {evs.length === 0 && !addingEvent ? (
                     <div style={{ fontSize: 14, color: '#595d6c', padding: '8px 0' }}>{DAILY_TASKS.NOTHING_SCHEDULED}</div>
                   ) : (
                     evs.map((ev, i) => {
                       const color = catColor(ev.cat, categoryMap)
-                      return (
-                        <div
-                          key={i}
-                          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderBottom: '1px solid rgba(233,233,237,0.04)' }}
-                        >
-                          <span style={{ width: 66, fontSize: 13, fontVariantNumeric: 'tabular-nums', color: '#9397ab', flexShrink: 0 }}>{ev.time}</span>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0, boxShadow: `0 0 6px ${color}` }} />
-                          <span style={{ flex: 1, fontSize: 14, color: '#e9e9ed' }}>{ev.title.replace(' — logged', '')}</span>
-                          <span style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color, opacity: 0.85, flexShrink: 0 }}>{ev.cat}</span>
 
-                          {/* Event actions */}
-                          <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
-                            {/* Pencil — only for task completions */}
+                      // ── Task row ──────────────────────────────────────────────
+                      if (ev.type === 'task') {
+                        return (
+                          <div
+                            key={i}
+                            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderBottom: '1px solid rgba(233,233,237,0.04)', opacity: ev.done ? 0.55 : 1, transition: 'opacity .25s ease' }}
+                          >
+                            <span style={{ width: 66, fontSize: 13, fontVariantNumeric: 'tabular-nums', color: '#9397ab', flexShrink: 0 }}>{ev.time}</span>
+                            {/* Checkbox bubble */}
+                            <div
+                              onClick={() => ev.taskId && onTaskToggled?.(ev.taskId, iso, !!ev.done)}
+                              style={{
+                                width: 18, height: 18, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
+                                border: `1.5px solid ${ev.done ? color : 'rgba(233,233,237,0.3)'}`,
+                                background: ev.done ? color : 'transparent',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                transition: 'all .2s ease',
+                              }}
+                            >
+                              {ev.done && (
+                                <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden>
+                                  <path d="M2 6l3 3 5-5" stroke="#161826" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              )}
+                            </div>
+                            <span style={{ flex: 1, fontSize: 14, color: ev.done ? '#595d6c' : '#e9e9ed', textDecoration: ev.done ? 'line-through' : 'none', transition: 'all .25s ease' }}>{ev.title}</span>
+                            <span style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color, opacity: 0.85, flexShrink: 0 }}>{ev.cat}</span>
                             {ev.taskId && onEditTask && (
                               <button
                                 onClick={() => onEditTask(ev.taskId!)}
@@ -227,13 +242,48 @@ export default function CalendarFilmStrip({
                                 </svg>
                               </button>
                             )}
-                            {/* Trash */}
+                          </div>
+                        )
+                      }
+
+                      // ── Meal log row (always done) ────────────────────────────
+                      if (ev.type === 'meal') {
+                        return (
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderBottom: '1px solid rgba(233,233,237,0.04)', opacity: 0.55 }}>
+                            <span style={{ width: 66, fontSize: 13, fontVariantNumeric: 'tabular-nums', color: '#9397ab', flexShrink: 0 }}>{ev.time}</span>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0, boxShadow: `0 0 6px ${color}` }} />
+                            <span style={{ flex: 1, fontSize: 14, color: '#595d6c', textDecoration: 'line-through' }}>{ev.title}</span>
+                            <span style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color, opacity: 0.85, flexShrink: 0 }}>{ev.cat}</span>
+                          </div>
+                        )
+                      }
+
+                      // ── Household event row ───────────────────────────────────
+                      return (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderBottom: '1px solid rgba(233,233,237,0.04)', opacity: ev.done ? 0.55 : 1, transition: 'opacity .25s ease' }}>
+                          <span style={{ width: 66, fontSize: 13, fontVariantNumeric: 'tabular-nums', color: '#9397ab', flexShrink: 0 }}>{ev.time}</span>
+                          <div
+                            onClick={() => ev.eventId && onEventToggled?.(ev.eventId, iso, !!ev.done)}
+                            style={{
+                              width: 18, height: 18, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
+                              border: `1.5px solid ${ev.done ? color : 'rgba(233,233,237,0.3)'}`,
+                              background: ev.done ? color : 'transparent',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              transition: 'all .2s ease',
+                            }}
+                          >
+                            {ev.done && (
+                              <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden>
+                                <path d="M2 6l3 3 5-5" stroke="#161826" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            )}
+                          </div>
+                          <span style={{ flex: 1, fontSize: 14, color: ev.done ? '#595d6c' : '#e9e9ed', textDecoration: ev.done ? 'line-through' : 'none', transition: 'all .25s ease' }}>{ev.title}</span>
+                          <span style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color, opacity: 0.85, flexShrink: 0 }}>{ev.cat}</span>
+                          <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
                             <button
-                              onClick={() => {
-                                if (ev.taskId && onUncompleteTask) onUncompleteTask(ev.taskId, iso)
-                                else if (ev.eventId && onDeleteEvent) onDeleteEvent(ev.eventId, iso)
-                              }}
-                              title={ev.taskId ? 'Remove from this day' : 'Delete event'}
+                              onClick={() => ev.eventId && onDeleteEvent?.(ev.eventId, iso)}
+                              title="Delete event"
                               style={{ width: 26, height: 26, borderRadius: 6, cursor: 'pointer', background: 'transparent', border: 'none', color: 'rgba(233,233,237,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color .15s ease' }}
                               onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171' }}
                               onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(233,233,237,0.2)' }}
@@ -308,8 +358,10 @@ export default function CalendarFilmStrip({
             )
           }
 
-          // Quiet panel
-          const dotCats = Array.from(new Set(evs.slice(0, 3).map((e) => e.cat)))
+          // Quiet panel — dots from completed tasks + events/meals
+          const tasksDone = evs.filter((e) => e.type === 'task' && e.done)
+          const nonTaskEvs = evs.filter((e) => e.type !== 'task')
+          const dotCats = Array.from(new Set([...tasksDone, ...nonTaskEvs].slice(0, 3).map((e) => e.cat)))
           return (
             <div
               key={iso}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import type { DailyTask, NocturneCalendarData, NocturneCalendarEvent, TaskScope, WeeklyRate } from '@/lib/types/dailyTasks'
+import type { DailyTask, NocturneCalendarData, NocturneCalendarEvent, TaskScope, WeeklyRate, TaskStruggleStat } from '@/lib/types/dailyTasks'
 import type { TaskCategoryRecord } from '@/lib/types/taskCategories'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import { DAILY_TASKS } from '@/locales/en'
@@ -23,15 +23,7 @@ interface NocturneMobileProps {
   initialEvents: NocturneCalendarData
   initialCategories: TaskCategoryRecord[]
   initialWeeklyRate: WeeklyRate
-}
-
-function formatTaskTime(timeOfDay: string | null): string {
-  if (!timeOfDay) return '—'
-  const [hStr, mStr] = timeOfDay.split(':')
-  const h = parseInt(hStr, 10)
-  const period = h < 12 ? 'AM' : 'PM'
-  const h12 = h % 12 === 0 ? 12 : h % 12
-  return `${h12}:${mStr} ${period}`
+  initialStruggleStats: TaskStruggleStat[]
 }
 
 function sortTasks(list: DailyTask[]): DailyTask[] {
@@ -49,13 +41,14 @@ const TABS: { key: Tab; label: string }[] = [
 ]
 
 export default function NocturneMobile({
-  householdId, initialTasks, initialEvents, initialCategories, initialWeeklyRate,
+  householdId, initialTasks, initialEvents, initialCategories, initialWeeklyRate, initialStruggleStats,
 }: NocturneMobileProps) {
   const [tab, setTab] = useState<Tab>('today')
   const [tasks, setTasks] = useState<DailyTask[]>(initialTasks)
   const [events, setEvents] = useState<NocturneCalendarData>(initialEvents)
   const [categories, setCategories] = useState<TaskCategoryRecord[]>(initialCategories)
   const [weeklyRate, setWeeklyRate] = useState<WeeklyRate>(initialWeeklyRate)
+  const [struggleStats, setStruggleStats] = useState<TaskStruggleStat[]>(initialStruggleStats)
 
   const [creating, setCreating] = useState(false)
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null)
@@ -76,9 +69,10 @@ export default function NocturneMobile({
   const soundRef = useRef<SoundEngine | null>(null)
   useEffect(() => { soundRef.current = new SoundEngine() }, [])
 
-  const categoryMap = useMemo<Record<string, string>>(() => {
-    return Object.fromEntries(categories.map((c) => [c.name, c.color]))
-  }, [categories])
+  const categoryMap = useMemo<Record<string, string>>(() => ({
+    ...Object.fromEntries(categories.map((c) => [c.name, c.color])),
+    meals: 'oklch(0.72 0.15 170)',
+  }), [categories])
 
   // Auto-reset at next 9am
   useEffect(() => {
@@ -106,64 +100,69 @@ export default function NocturneMobile({
   async function handleComplete(taskId: string) {
     const task = tasks.find((t) => t.id === taskId)
     if (!task) return
+    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
+    setEvents((prev) => ({
+      ...prev,
+      [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev),
+    }))
     try {
       await apiClient.post(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
-      if (task.logsToCalendar) {
-        const liveToday = new Date().toLocaleDateString('en-CA')
-        const newEvent: NocturneCalendarEvent = {
-          time: formatTaskTime(task.timeOfDay),
-          title: task.title + ' — logged',
-          cat: task.category,
-          taskId: task.id,
-        }
-        setEvents((prev) => ({ ...prev, [liveToday]: [...(prev[liveToday] ?? []), newEvent] }))
-      }
-      if (task.logsToCalendar) {
-        const dateLabel = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        showToast(DAILY_TASKS.TOAST_LOGGED(dateLabel), categoryMap[task.category] ?? '#9184d9')
-      } else {
-        showToast(DAILY_TASKS.TOAST_COMPLETED)
-      }
+      showToast(DAILY_TASKS.TOAST_COMPLETED, categoryMap[task.category] ?? '#9184d9')
     } catch (err) {
       console.error('[NocturneMobile.handleComplete]', err)
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
+      setEvents((prev) => ({
+        ...prev,
+        [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev),
+      }))
       showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
     }
   }
 
   async function handleUncomplete(taskId: string) {
-    const task = tasks.find((t) => t.id === taskId)
-    if (!task) return
+    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
+    setEvents((prev) => ({
+      ...prev,
+      [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev),
+    }))
     try {
       await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
-      if (task.logsToCalendar) {
-        const liveToday = new Date().toLocaleDateString('en-CA')
-        setEvents((prev) => {
-          const todayEvs = (prev[liveToday] ?? []).filter((ev) => ev.title !== task.title + ' — logged')
-          return { ...prev, [liveToday]: todayEvs }
-        })
-      }
     } catch (err) {
       console.error('[NocturneMobile.handleUncomplete]', err)
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
+      setEvents((prev) => ({
+        ...prev,
+        [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev),
+      }))
       showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
     }
   }
 
-  async function handleUncompleteFromCalendar(taskId: string, date: string) {
+  async function handleCalendarTaskToggle(taskId: string, date: string, currentlyDone: boolean) {
+    soundRef.current?.playSwipe()
+    setEvents((prev) => ({
+      ...prev,
+      [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: !currentlyDone } : ev),
+    }))
+    if (date === todayISO) {
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: !currentlyDone } : t))
+    }
     try {
-      await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete?date=${date}`)
-      setEvents((prev) => {
-        const evs = (prev[date] ?? []).filter((ev) => ev.taskId !== taskId)
-        return { ...prev, [date]: evs }
-      })
-      if (date === todayISO) {
-        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
+      if (currentlyDone) {
+        await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete?date=${date}`)
+      } else {
+        await apiClient.post(`/api/dashboard/${householdId}/tasks/${taskId}/complete`, { date })
       }
+      showToast(currentlyDone ? DAILY_TASKS.TOAST_CALENDAR_UNDONE : DAILY_TASKS.TOAST_CALENDAR_DONE)
     } catch (err) {
-      console.error('[NocturneMobile.handleUncompleteFromCalendar]', err)
+      console.error('[NocturneMobile.handleCalendarTaskToggle]', err)
+      setEvents((prev) => ({
+        ...prev,
+        [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: currentlyDone } : ev),
+      }))
+      if (date === todayISO) {
+        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: currentlyDone } : t))
+      }
       showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
     }
   }
@@ -178,7 +177,7 @@ export default function NocturneMobile({
     const liveToday = new Date().toLocaleDateString('en-CA')
     setEvents((prev) => ({
       ...prev,
-      [liveToday]: (prev[liveToday] ?? []).filter((ev) => !ev.title.endsWith(' — logged')),
+      [liveToday]: (prev[liveToday] ?? []).map((ev) => ev.type === 'task' ? { ...ev, done: false } : ev),
     }))
     soundRef.current?.playFlush()
     try {
@@ -281,7 +280,7 @@ export default function NocturneMobile({
       { date, title, scope },
     )
     const ev = res.data.data
-    const newEvent: NocturneCalendarEvent = { time: '—', title: ev.title, cat: 'home', eventId: ev.id }
+    const newEvent: NocturneCalendarEvent = { type: 'event', time: '—', title: ev.title, cat: 'home', eventId: ev.id }
     setEvents((prev) => ({ ...prev, [date]: [...(prev[date] ?? []), newEvent] }))
     showToast(DAILY_TASKS.TOAST_EVENT_ADDED)
   }
@@ -293,6 +292,24 @@ export default function NocturneMobile({
       return { ...prev, [date]: evs }
     })
     showToast(DAILY_TASKS.TOAST_EVENT_DELETED)
+  }
+
+  async function handleCalendarEventToggle(eventId: string, date: string, currentlyDone: boolean) {
+    setEvents((prev) => ({
+      ...prev,
+      [date]: (prev[date] ?? []).map((ev) => ev.eventId === eventId ? { ...ev, done: !currentlyDone } : ev),
+    }))
+    try {
+      await apiClient.patch(`/api/dashboard/${householdId}/events/${eventId}`, { completed: !currentlyDone })
+      showToast(currentlyDone ? DAILY_TASKS.TOAST_CALENDAR_UNDONE : DAILY_TASKS.TOAST_CALENDAR_DONE)
+    } catch (err) {
+      console.error('[NocturneMobile.handleCalendarEventToggle]', err)
+      setEvents((prev) => ({
+        ...prev,
+        [date]: (prev[date] ?? []).map((ev) => ev.eventId === eventId ? { ...ev, done: currentlyDone } : ev),
+      }))
+      showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
+    }
   }
 
   function handleEditTaskFromCalendar(taskId: string) {
@@ -319,8 +336,8 @@ export default function NocturneMobile({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'transparent' }}>
 
-      {/* Tab bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '14px 16px 0', flexShrink: 0 }}>
+      {/* Row 1: Tab switcher */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '14px 16px 0', flexShrink: 0 }}>
         {TABS.map(({ key, label }) => {
           const active = tab === key
           return (
@@ -328,54 +345,47 @@ export default function NocturneMobile({
               key={key}
               onClick={() => switchTab(key)}
               style={{
-                height: 32, padding: '0 14px', borderRadius: 20, cursor: 'pointer',
+                height: 32, padding: '0 18px', borderRadius: 20, cursor: 'pointer',
                 fontSize: 13, fontWeight: 400,
                 background: active ? 'rgba(145,132,217,0.16)' : 'transparent',
                 border: `1px solid ${active ? '#9184d9' : 'rgba(233,233,237,0.1)'}`,
                 color: active ? '#e9e9ed' : '#75798c',
                 boxShadow: active ? '0 0 18px rgba(145,132,217,0.25)' : 'none',
                 transition: 'all .25s ease',
-                flexShrink: 0,
               }}
             >
               {label}
             </button>
           )
         })}
+      </div>
 
-        <div style={{ flex: 1 }} />
+      {/* Row 2: Action buttons */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px 0', flexShrink: 0 }}>
+        {/* Add task */}
+        <button
+          onClick={openCreating}
+          style={{ flex: 1, height: 30, borderRadius: 20, cursor: 'pointer', fontSize: 12, fontWeight: 500, background: 'rgba(145,132,217,0.18)', border: '1px solid rgba(145,132,217,0.45)', color: '#b5abfc', transition: 'all .25s ease' }}
+        >
+          {DAILY_TASKS.MOBILE_NEW_BTN}
+        </button>
 
         {/* Reset */}
         <button
           onClick={handleReset}
           disabled={resetting}
           title="Clear all completions for today"
-          style={{ width: 32, height: 32, borderRadius: 20, cursor: resetting ? 'default' : 'pointer', background: 'transparent', border: '1px solid rgba(233,233,237,0.1)', color: '#595d6c', opacity: resetting ? 0.4 : 1, transition: 'all .25s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+          style={{ flex: 1, height: 30, borderRadius: 20, cursor: resetting ? 'default' : 'pointer', fontSize: 12, background: 'transparent', border: '1px solid rgba(233,233,237,0.1)', color: '#595d6c', opacity: resetting ? 0.4 : 1, transition: 'all .25s ease' }}
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-            <path d="M3 3v5h5" />
-          </svg>
+          {DAILY_TASKS.MOBILE_RESET_BTN}
         </button>
 
         {/* Manage */}
         <button
           onClick={() => setManaging(true)}
-          style={{ width: 32, height: 32, borderRadius: 20, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(233,233,237,0.1)', color: '#75798c', transition: 'all .25s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+          style={{ flex: 1, height: 30, borderRadius: 20, cursor: 'pointer', fontSize: 12, background: 'transparent', border: '1px solid rgba(233,233,237,0.1)', color: '#75798c', transition: 'all .25s ease' }}
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        </button>
-
-        {/* Add task */}
-        <button
-          onClick={openCreating}
-          style={{ height: 32, padding: '0 13px', borderRadius: 20, cursor: 'pointer', fontSize: 13, fontWeight: 500, background: 'rgba(145,132,217,0.18)', border: '1px solid rgba(145,132,217,0.45)', color: '#b5abfc', boxShadow: '0 0 10px rgba(145,132,217,0.12)', transition: 'all .25s ease', flexShrink: 0 }}
-        >
-          + {DAILY_TASKS.NEW_TASK}
+          {DAILY_TASKS.MOBILE_MANAGE_BTN}
         </button>
       </div>
 
@@ -389,6 +399,7 @@ export default function NocturneMobile({
             weeklyRate={weeklyRate}
             categoryMap={categoryMap}
             now={now}
+            struggleStats={struggleStats}
           />
         </div>
 
@@ -401,7 +412,8 @@ export default function NocturneMobile({
             onAddEvent={handleCreateCalendarEvent}
             onDeleteEvent={handleDeleteCalendarEvent}
             onEditTask={handleEditTaskFromCalendar}
-            onUncompleteTask={handleUncompleteFromCalendar}
+            onTaskToggled={handleCalendarTaskToggle}
+            onEventToggled={handleCalendarEventToggle}
           />
         </div>
 
@@ -417,6 +429,7 @@ export default function NocturneMobile({
             onComplete={handleComplete}
             onUncomplete={handleUncomplete}
             onJackpot={() => setJackpot(true)}
+            todayEvents={todayEvents}
           />
         </div>
       </div>

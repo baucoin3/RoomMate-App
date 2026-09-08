@@ -80,6 +80,24 @@ export class SoundEngine {
     this.glass(320, 0.2, 0.05)
   }
 
+  playSwipe() {
+    const ac = this.ctx()
+    if (!ac) return
+    const t0 = ac.currentTime
+    const o = ac.createOscillator()
+    o.type = 'sine'
+    o.frequency.setValueAtTime(1800, t0)
+    o.frequency.exponentialRampToValueAtTime(600, t0 + 0.18)
+    const gain = ac.createGain()
+    gain.gain.setValueAtTime(0, t0)
+    gain.gain.linearRampToValueAtTime(0.06, t0 + 0.01)
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18)
+    o.connect(gain)
+    gain.connect(ac.destination)
+    o.start(t0)
+    o.stop(t0 + 0.2)
+  }
+
   playFlush() {
     const ac = this.ctx()
     if (!ac) return

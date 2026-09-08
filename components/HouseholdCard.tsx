@@ -62,9 +62,9 @@ export default function HouseholdCard({ household }: HouseholdCardProps) {
         <h2 className="truncate text-sm font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">
           {household.name}
         </h2>
-        <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-400">
-          <span className="font-medium">{HOUSEHOLDS.INVITE_CODE_LABEL}:</span>
-          <span className="font-mono tracking-wide">{household.invite_code}</span>
+        <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-400 min-w-0 flex-wrap">
+          <span className="font-medium shrink-0">{HOUSEHOLDS.INVITE_CODE_LABEL}:</span>
+          <span className="font-mono tracking-wide truncate">{household.invite_code}</span>
           <button
             type="button"
             onClick={handleCopy}

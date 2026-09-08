@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import type { DailyTask, NocturneCalendarData, NocturneCalendarEvent, TaskScope, WeeklyRate } from '@/lib/types/dailyTasks'
+import type { DailyTask, NocturneCalendarData, NocturneCalendarEvent, TaskScope, WeeklyRate, TaskStruggleStat } from '@/lib/types/dailyTasks'
 import type { TaskCategoryRecord } from '@/lib/types/taskCategories'
 import { apiClient, getErrorMessage } from '@/lib/api/client'
 import { DAILY_TASKS } from '@/locales/en'
@@ -22,15 +22,7 @@ interface NocturneHomeProps {
   initialEvents: NocturneCalendarData
   initialCategories: TaskCategoryRecord[]
   initialWeeklyRate: WeeklyRate
-}
-
-function formatTaskTime(timeOfDay: string | null): string {
-  if (!timeOfDay) return '—'
-  const [hStr, mStr] = timeOfDay.split(':')
-  const h = parseInt(hStr, 10)
-  const period = h < 12 ? 'AM' : 'PM'
-  const h12 = h % 12 === 0 ? 12 : h % 12
-  return `${h12}:${mStr} ${period}`
+  initialStruggleStats: TaskStruggleStat[]
 }
 
 function sortTasks(list: DailyTask[]): DailyTask[] {
@@ -42,13 +34,14 @@ function sortTasks(list: DailyTask[]): DailyTask[] {
 }
 
 export default function NocturneHome({
-  householdId, initialTasks, initialEvents, initialCategories, initialWeeklyRate,
+  householdId, initialTasks, initialEvents, initialCategories, initialWeeklyRate, initialStruggleStats,
 }: NocturneHomeProps) {
   const [tab, setTab] = useState<Tab>('today')
   const [tasks, setTasks] = useState<DailyTask[]>(initialTasks)
   const [events, setEvents] = useState<NocturneCalendarData>(initialEvents)
   const [categories, setCategories] = useState<TaskCategoryRecord[]>(initialCategories)
   const [weeklyRate, setWeeklyRate] = useState<WeeklyRate>(initialWeeklyRate)
+  const [struggleStats, setStruggleStats] = useState<TaskStruggleStat[]>(initialStruggleStats)
 
   const [creating, setCreating] = useState(false)
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null)
@@ -69,10 +62,11 @@ export default function NocturneHome({
   const soundRef = useRef<SoundEngine | null>(null)
   useEffect(() => { soundRef.current = new SoundEngine() }, [])
 
-  // categoryMap derived from categories
-  const categoryMap = useMemo<Record<string, string>>(() => {
-    return Object.fromEntries(categories.map((c) => [c.name, c.color]))
-  }, [categories])
+  // categoryMap derived from categories; 'meals' hardcoded for recipe calendar events
+  const categoryMap = useMemo<Record<string, string>>(() => ({
+    ...Object.fromEntries(categories.map((c) => [c.name, c.color])),
+    meals: 'oklch(0.72 0.15 170)',
+  }), [categories])
 
   // Auto-reset at next 9am boundary
   useEffect(() => {
@@ -100,69 +94,70 @@ export default function NocturneHome({
   async function handleComplete(taskId: string) {
     const task = tasks.find((t) => t.id === taskId)
     if (!task) return
+    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
+    setEvents((prev) => ({
+      ...prev,
+      [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev),
+    }))
     try {
       await apiClient.post(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
-
-      if (task.logsToCalendar) {
-        const liveToday = new Date().toLocaleDateString('en-CA')
-        const newEvent: NocturneCalendarEvent = {
-          time: formatTaskTime(task.timeOfDay),
-          title: task.title + ' — logged',
-          cat: task.category,
-          taskId: task.id,
-        }
-        setEvents((prev) => ({ ...prev, [liveToday]: [...(prev[liveToday] ?? []), newEvent] }))
-      }
-
-      if (task.logsToCalendar) {
-        const dateLabel = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        showToast(DAILY_TASKS.TOAST_LOGGED(dateLabel), categoryMap[task.category] ?? '#9184d9')
-      } else {
-        showToast(DAILY_TASKS.TOAST_COMPLETED)
-      }
+      showToast(DAILY_TASKS.TOAST_COMPLETED, categoryMap[task.category] ?? '#9184d9')
     } catch (err) {
       console.error('[NocturneHome.handleComplete]', err)
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
+      setEvents((prev) => ({
+        ...prev,
+        [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev),
+      }))
       showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
     }
   }
 
   async function handleUncomplete(taskId: string) {
-    const task = tasks.find((t) => t.id === taskId)
-    if (!task) return
+    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
+    setEvents((prev) => ({
+      ...prev,
+      [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev),
+    }))
     try {
       await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
-      if (task.logsToCalendar) {
-        const liveToday = new Date().toLocaleDateString('en-CA')
-        setEvents((prev) => {
-          const todayEvs = (prev[liveToday] ?? []).filter((ev) => ev.title !== task.title + ' — logged')
-          return { ...prev, [liveToday]: todayEvs }
-        })
-      }
     } catch (err) {
       console.error('[NocturneHome.handleUncomplete]', err)
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
+      setEvents((prev) => ({
+        ...prev,
+        [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev),
+      }))
       showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
     }
   }
 
-  // Uncomplete from calendar (specific date, may be past)
-  async function handleUncompleteFromCalendar(taskId: string, date: string) {
+  // Toggle a task from the calendar (specific date, may be past/future)
+  async function handleCalendarTaskToggle(taskId: string, date: string, currentlyDone: boolean) {
+    soundRef.current?.playSwipe()
+    setEvents((prev) => ({
+      ...prev,
+      [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: !currentlyDone } : ev),
+    }))
+    if (date === todayISO) {
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: !currentlyDone } : t))
+    }
     try {
-      await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete?date=${date}`)
-      const task = tasks.find((t) => t.id === taskId)
-      setEvents((prev) => {
-        const evs = (prev[date] ?? []).filter((ev) => ev.taskId !== taskId)
-        return { ...prev, [date]: evs }
-      })
-      // If it's today's period, also update done flag
-      if (date === todayISO && task) {
-        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
+      if (currentlyDone) {
+        await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete?date=${date}`)
+      } else {
+        await apiClient.post(`/api/dashboard/${householdId}/tasks/${taskId}/complete`, { date })
       }
+      showToast(currentlyDone ? DAILY_TASKS.TOAST_CALENDAR_UNDONE : DAILY_TASKS.TOAST_CALENDAR_DONE)
     } catch (err) {
-      console.error('[NocturneHome.handleUncompleteFromCalendar]', err)
+      console.error('[NocturneHome.handleCalendarTaskToggle]', err)
+      setEvents((prev) => ({
+        ...prev,
+        [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: currentlyDone } : ev),
+      }))
+      if (date === todayISO) {
+        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: currentlyDone } : t))
+      }
       showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
     }
   }
@@ -177,7 +172,7 @@ export default function NocturneHome({
     const liveToday = new Date().toLocaleDateString('en-CA')
     setEvents((prev) => ({
       ...prev,
-      [liveToday]: (prev[liveToday] ?? []).filter((ev) => !ev.title.endsWith(' — logged')),
+      [liveToday]: (prev[liveToday] ?? []).map((ev) => ev.type === 'task' ? { ...ev, done: false } : ev),
     }))
     soundRef.current?.playFlush()
     try {
@@ -281,7 +276,7 @@ export default function NocturneHome({
       { date, title, scope },
     )
     const ev = res.data.data
-    const newEvent: NocturneCalendarEvent = { time: '—', title: ev.title, cat: 'home', eventId: ev.id }
+    const newEvent: NocturneCalendarEvent = { type: 'event', time: '—', title: ev.title, cat: 'home', eventId: ev.id }
     setEvents((prev) => ({ ...prev, [date]: [...(prev[date] ?? []), newEvent] }))
     showToast(DAILY_TASKS.TOAST_EVENT_ADDED)
   }
@@ -293,6 +288,25 @@ export default function NocturneHome({
       return { ...prev, [date]: evs }
     })
     showToast(DAILY_TASKS.TOAST_EVENT_DELETED)
+  }
+
+  async function handleCalendarEventToggle(eventId: string, date: string, currentlyDone: boolean) {
+    soundRef.current?.playSwipe()
+    setEvents((prev) => ({
+      ...prev,
+      [date]: (prev[date] ?? []).map((ev) => ev.eventId === eventId ? { ...ev, done: !currentlyDone } : ev),
+    }))
+    try {
+      await apiClient.patch(`/api/dashboard/${householdId}/events/${eventId}`, { completed: !currentlyDone })
+      showToast(currentlyDone ? DAILY_TASKS.TOAST_CALENDAR_UNDONE : DAILY_TASKS.TOAST_CALENDAR_DONE)
+    } catch (err) {
+      console.error('[NocturneHome.handleCalendarEventToggle]', err)
+      setEvents((prev) => ({
+        ...prev,
+        [date]: (prev[date] ?? []).map((ev) => ev.eventId === eventId ? { ...ev, done: currentlyDone } : ev),
+      }))
+      showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
+    }
   }
 
   // ── Edit task from calendar ──────────────────────────────────────────────────
@@ -403,7 +417,7 @@ export default function NocturneHome({
       <div style={{ flex: 1, position: 'relative', padding: '20px 32px 0', overflow: 'hidden' }}>
         {/* Today */}
         <div style={{ position: 'absolute', inset: '20px 32px 0', opacity: tab === 'today' ? 1 : 0, transform: tab === 'today' ? 'translateY(0) scale(1)' : 'translateY(16px) scale(0.985)', pointerEvents: tab === 'today' ? 'auto' : 'none', transition: 'opacity .45s ease, transform .55s cubic-bezier(.2,.8,.2,1)' }}>
-          <TodayPanel tasks={tasks} events={todayEvents} weeklyRate={weeklyRate} categoryMap={categoryMap} now={now} />
+          <TodayPanel tasks={tasks} events={todayEvents} weeklyRate={weeklyRate} categoryMap={categoryMap} now={now} struggleStats={struggleStats} />
         </div>
 
         {/* Calendar */}
@@ -417,7 +431,8 @@ export default function NocturneHome({
             onAddEvent={handleCreateCalendarEvent}
             onEditTask={handleEditTaskFromCalendar}
             onDeleteEvent={handleDeleteCalendarEvent}
-            onUncompleteTask={handleUncompleteFromCalendar}
+            onTaskToggled={handleCalendarTaskToggle}
+            onEventToggled={handleCalendarEventToggle}
           />
         </div>
 
@@ -434,6 +449,7 @@ export default function NocturneHome({
             onComplete={handleComplete}
             onUncomplete={handleUncomplete}
             onJackpot={() => setJackpot(true)}
+            todayEvents={todayEvents}
           />
         </div>
       </div>

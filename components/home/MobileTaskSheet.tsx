@@ -136,8 +136,7 @@ export default function MobileTaskSheet({
           transition: 'transform .45s cubic-bezier(.2,.85,.2,1), opacity .3s ease',
           display: 'flex', flexDirection: 'column',
           maxHeight: '88vh',
-          overflowY: 'auto',
-          padding: '0 0 env(safe-area-inset-bottom, 16px)',
+          overflow: 'hidden',
         }}
       >
         {/* Drag handle */}
@@ -145,7 +144,7 @@ export default function MobileTaskSheet({
           <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(233,233,237,0.2)' }} />
         </div>
 
-        <div style={{ padding: '8px 22px 28px', display: 'flex', flexDirection: 'column', gap: 0 }}>
+        <div style={{ padding: '8px 22px 0', display: 'flex', flexDirection: 'column', gap: 0, overflowY: 'auto', flex: 1 }}>
           {/* Header */}
           <div style={{ marginBottom: 22 }}>
             <div style={{ fontSize: 10, letterSpacing: '0.2em', color: '#75798c', textTransform: 'uppercase', marginBottom: 5 }}>
@@ -345,27 +344,37 @@ export default function MobileTaskSheet({
             </div>
           )}
 
-          {/* Actions */}
-          <div style={{ display: 'flex', gap: 9, marginTop: 20 }}>
-            <button
-              onClick={onClose}
-              style={{ flex: 1, height: 46, borderRadius: 12, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(233,233,237,0.12)', color: '#75798c', fontSize: 14 }}
-            >
-              {DAILY_TASKS.SLIDE_CANCEL}
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              style={{
-                flex: 1.4, height: 46, borderRadius: 12, cursor: saving ? 'default' : 'pointer',
-                background: 'rgba(145,132,217,0.12)', border: '1px solid rgba(145,132,217,0.5)',
-                color: '#e9e9ed', fontSize: 14,
-                opacity: saving ? 0.6 : 1, transition: 'opacity .2s ease',
-              }}
-            >
-              {isEdit ? DAILY_TASKS.SLIDE_SAVE_EDIT : DAILY_TASKS.MOBILE_SLIDE_SAVE}
-            </button>
-          </div>
+        </div>
+
+        {/* Sticky footer — always visible above nav bar */}
+        <div
+          style={{
+            flexShrink: 0,
+            display: 'flex', gap: 9,
+            padding: '12px 22px',
+            paddingBottom: 'calc(56px + env(safe-area-inset-bottom, 0px))',
+            borderTop: '1px solid rgba(233,233,237,0.06)',
+            background: 'linear-gradient(180deg,#232532,#161826)',
+          }}
+        >
+          <button
+            onClick={onClose}
+            style={{ flex: 1, height: 46, borderRadius: 12, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(233,233,237,0.12)', color: '#75798c', fontSize: 14 }}
+          >
+            {DAILY_TASKS.SLIDE_CANCEL}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              flex: 1.4, height: 46, borderRadius: 12, cursor: saving ? 'default' : 'pointer',
+              background: 'rgba(145,132,217,0.12)', border: '1px solid rgba(145,132,217,0.5)',
+              color: '#e9e9ed', fontSize: 14,
+              opacity: saving ? 0.6 : 1, transition: 'opacity .2s ease',
+            }}
+          >
+            {isEdit ? DAILY_TASKS.SLIDE_SAVE_EDIT : DAILY_TASKS.MOBILE_SLIDE_SAVE}
+          </button>
         </div>
       </div>
     </>

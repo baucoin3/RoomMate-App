@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
-import type { DailyTask } from '@/lib/types/dailyTasks'
+import type { DailyTask, NocturneCalendarEvent } from '@/lib/types/dailyTasks'
 import type { SoundEngine } from './SoundEngine'
 import BurstAnimation from './BurstAnimation'
 import { DAILY_TASKS } from '@/locales/en'
@@ -50,12 +50,13 @@ interface WheelPanelProps {
   springIndex: number
   onComplete: (taskId: string) => Promise<void>
   onUncomplete: (taskId: string) => Promise<void>
+  todayEvents: NocturneCalendarEvent[]
   onJackpot?: () => void
 }
 
 export default function WheelPanel({
   tasks, now, isActive, categoryMap, soundRef,
-  springNonce, springIndex, onComplete, onUncomplete, onJackpot,
+  springNonce, springIndex, onComplete, onUncomplete, onJackpot, todayEvents,
 }: WheelPanelProps) {
   const nowMins = now.getHours() * 60 + now.getMinutes()
   const posRef = useRef(0)
@@ -161,20 +162,25 @@ export default function WheelPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, tasks.length])
 
+  function isTaskDone(taskId: string): boolean {
+    return todayEvents.some((e) => e.taskId === taskId && e.done === true)
+  }
+
   async function handleCardClick(task: DailyTask, cardIndex: number) {
     if (Math.abs(cardIndex - posRef.current) >= 0.35) { springTo(cardIndex); return }
     if (completingRef.current) return
     completingRef.current = true
     soundRef.current?.playTap()
+    const done = isTaskDone(task.id)
     try {
-      if (task.done) {
+      if (done) {
         await onUncomplete(task.id)
       } else {
         await onComplete(task.id)
         soundRef.current?.playComplete()
         const color = catColor(task.category, categoryMap)
         setBurst({ color, key: Date.now() })
-        if (onJackpot && Math.random() < 0.075) {
+        if (onJackpot && Math.random() < 0.15) {
           onJackpot()
         }
       }
@@ -197,13 +203,24 @@ export default function WheelPanel({
     >
       {/* Above-arc eyebrow */}
       <div style={{ textAlign: 'center', marginBottom: 18 }}>
-        <div style={{ fontSize: 11, letterSpacing: '0.2em', color: '#75798c', textTransform: 'uppercase', minHeight: 16 }}>
-          {centreLabel}
-        </div>
+        {(() => {
+          const glowColor = centreTask ? (categoryMap[centreTask.category] ?? '#75798c') : '#75798c'
+          return (
+            <div style={{
+              fontSize: 12, letterSpacing: '0.2em', textTransform: 'uppercase', minHeight: 16, fontWeight: 600,
+              color: centreTask ? glowColor : '#75798c',
+              textShadow: centreTask ? `0 0 18px ${glowColor}90, 0 0 40px ${glowColor}40` : 'none',
+              transition: 'color .4s ease, text-shadow .4s ease',
+            }}>
+              {centreLabel}
+            </div>
+          )
+        })()}
         {tasks.length > 0 && (
           <div style={{ fontSize: 12, color: '#595d6c', marginTop: 4 }}>{DAILY_TASKS.HINT_COMPLETE}</div>
         )}
       </div>
+
 
       {/* Arc container */}
       <div
@@ -237,7 +254,8 @@ export default function WheelPanel({
             const zIdx = 200 - Math.round(Math.abs(o) * 20)
             const color = catColor(task.category, categoryMap)
             const taskMins = task.timeOfDay ? timeOfDayToMins(task.timeOfDay) : null
-            const isOverdue = taskMins !== null && nowMins > taskMins && !task.done
+            const done = isTaskDone(task.id)
+            const isOverdue = taskMins !== null && nowMins > taskMins && !done
 
             return (
               <div
@@ -247,7 +265,7 @@ export default function WheelPanel({
                   position: 'absolute', left: '50%', top: 0,
                   width: CARD_W, height: CARD_H, padding: 22,
                   borderRadius: 22,
-                  background: task.done
+                  background: done
                     ? 'rgba(30,32,44,0.62)'
                     : 'linear-gradient(160deg,rgba(35,37,50,0.9),rgba(20,22,34,0.86))',
                   backdropFilter: `blur(${(6 + focus * 8).toFixed(1)}px)`,
@@ -269,7 +287,7 @@ export default function WheelPanel({
                 }}
               >
                 {/* Category eyebrow */}
-                <div style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: task.done ? '#595d6c' : color }}>
+                <div style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: done ? '#595d6c' : color }}>
                   {capitalizeFirst(task.category)}
                 </div>
 
@@ -278,13 +296,13 @@ export default function WheelPanel({
                   <div
                     style={{
                       width: 22, height: 22, borderRadius: '50%',
-                      border: `1.5px solid ${task.done ? color : 'rgba(233,233,237,0.25)'}`,
-                      background: task.done ? color : 'transparent',
+                      border: `1.5px solid ${done ? color : 'rgba(233,233,237,0.25)'}`,
+                      background: done ? color : 'transparent',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       transition: 'all .3s ease',
                     }}
                   >
-                    {task.done && (
+                    {done && (
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
                         <path d="M2 6l3 3 5-5" stroke="#161826" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
@@ -293,17 +311,17 @@ export default function WheelPanel({
                 </div>
 
                 {/* Title */}
-                <div style={{ fontSize: 20, fontWeight: 400, color: task.done ? '#75798c' : '#e9e9ed', marginTop: 14, lineHeight: 1.3, flex: 1, textDecoration: task.done ? 'line-through' : 'none', overflowWrap: 'break-word' }}>
+                <div style={{ fontSize: 20, fontWeight: 400, color: done ? '#75798c' : '#e9e9ed', marginTop: 14, lineHeight: 1.3, flex: 1, textDecoration: done ? 'line-through' : 'none', overflowWrap: 'break-word' }}>
                   {task.title}
                 </div>
 
                 {/* Time */}
-                <div style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', color: task.done ? '#595d6c' : '#75798c', marginTop: 8 }}>
+                <div style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', color: done ? '#595d6c' : '#75798c', marginTop: 8 }}>
                   {formatTaskTime(task.timeOfDay)}
                 </div>
 
                 {/* Gradient bar */}
-                <div style={{ height: 2, borderRadius: 1, marginTop: 10, background: task.done ? 'rgba(233,233,237,0.06)' : `linear-gradient(90deg,${color},transparent)` }} />
+                <div style={{ height: 2, borderRadius: 1, marginTop: 10, background: done ? 'rgba(233,233,237,0.06)' : `linear-gradient(90deg,${color},transparent)` }} />
               </div>
             )
           })
