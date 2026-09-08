@@ -449,6 +449,7 @@ export default function NocturneHome({
             onComplete={handleComplete}
             onUncomplete={handleUncomplete}
             onJackpot={() => setJackpot(true)}
+            todayEvents={todayEvents}
           />
         </div>
       </div>

@@ -429,6 +429,7 @@ export default function NocturneMobile({
             onComplete={handleComplete}
             onUncomplete={handleUncomplete}
             onJackpot={() => setJackpot(true)}
+            todayEvents={todayEvents}
           />
         </div>
       </div>

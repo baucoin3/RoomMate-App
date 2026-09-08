@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
-import type { DailyTask } from '@/lib/types/dailyTasks'
+import type { DailyTask, NocturneCalendarEvent } from '@/lib/types/dailyTasks'
 import type { SoundEngine } from './SoundEngine'
 import BurstAnimation from './BurstAnimation'
 import { DAILY_TASKS } from '@/locales/en'
@@ -44,11 +44,12 @@ interface MobileTaskCardProps {
   springIndex: number
   onComplete: (taskId: string) => Promise<void>
   onUncomplete: (taskId: string) => Promise<void>
+  todayEvents: NocturneCalendarEvent[]
   onJackpot?: () => void
 }
 
 export default function MobileTaskCard({
-  tasks, now, categoryMap, soundRef, springNonce, springIndex, onComplete, onUncomplete, onJackpot,
+  tasks, now, categoryMap, soundRef, springNonce, springIndex, onComplete, onUncomplete, onJackpot, todayEvents,
 }: MobileTaskCardProps) {
   const nowMins = now.getHours() * 60 + now.getMinutes()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -128,12 +129,17 @@ export default function MobileTaskCard({
     startSpring()
   }
 
+  function isTaskDone(taskId: string): boolean {
+    return todayEvents.some((e) => e.taskId === taskId && e.done === true)
+  }
+
   async function handleCompleteCard(task: DailyTask) {
     if (completingRef.current) return
     completingRef.current = true
     soundRef.current?.playTap()
+    const done = isTaskDone(task.id)
     try {
-      if (task.done) {
+      if (done) {
         await onUncomplete(task.id)
       } else {
         await onComplete(task.id)
@@ -159,7 +165,7 @@ export default function MobileTaskCard({
   const glowColor = centreTask ? (categoryMap[centreTask.category] ?? '#75798c') : '#75798c'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
       {/* Category eyebrow */}
       <div style={{ textAlign: 'center', marginBottom: 10, flexShrink: 0 }}>
         <div style={{
@@ -180,7 +186,7 @@ export default function MobileTaskCard({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         style={{
-          position: 'relative', flex: 1, overflow: 'hidden',
+          position: 'relative', height: 260, overflow: 'hidden',
           cursor: 'grab', userSelect: 'none', touchAction: 'pan-y',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}
@@ -196,7 +202,8 @@ export default function MobileTaskCard({
           const isCentre = Math.abs(o) < 0.35
           const color = catColor(task.category, categoryMap)
           const taskMins = task.timeOfDay ? timeToMins(task.timeOfDay) : null
-          const isOverdue = taskMins !== null && nowMins > taskMins && !task.done
+          const done = isTaskDone(task.id)
+          const isOverdue = taskMins !== null && nowMins > taskMins && !done
           const zIdx = 10 - Math.round(Math.abs(o) * 2)
 
           return (
@@ -208,7 +215,7 @@ export default function MobileTaskCard({
                 maxWidth: 360,
                 borderRadius: 24,
                 padding: '20px 22px 22px',
-                background: task.done
+                background: done
                   ? 'rgba(30,32,44,0.72)'
                   : 'linear-gradient(160deg,rgba(35,37,50,0.96),rgba(20,22,34,0.9))',
                 backdropFilter: `blur(${(8 + (1 - Math.abs(o)) * 6).toFixed(1)}px)`,
@@ -220,7 +227,7 @@ export default function MobileTaskCard({
                 boxShadow: [
                   `0 ${(12 + (1 - Math.abs(o)) * 22).toFixed(0)}px ${(28 + (1 - Math.abs(o)) * 28).toFixed(0)}px rgba(0,0,0,${(0.38 + (1 - Math.abs(o)) * 0.2).toFixed(2)})`,
                   isCentre ? `0 0 36px ${catColorAlpha(task.category, categoryMap, 0.2)}` : '',
-                  isOverdue && !task.done ? '0 0 20px rgba(220,38,38,0.1)' : '',
+                  isOverdue && !done ? '0 0 20px rgba(220,38,38,0.1)' : '',
                 ].filter(Boolean).join(', '),
                 transform: `translateX(${tx.toFixed(1)}px) scale(${scale.toFixed(3)})`,
                 opacity,
@@ -231,23 +238,23 @@ export default function MobileTaskCard({
               }}
             >
               {/* Color bar at top */}
-              <div style={{ height: 3, borderRadius: 2, marginBottom: 18, background: task.done ? 'rgba(233,233,237,0.06)' : `linear-gradient(90deg,${color},transparent)` }} />
+              <div style={{ height: 3, borderRadius: 2, marginBottom: 18, background: done ? 'rgba(233,233,237,0.06)' : `linear-gradient(90deg,${color},transparent)` }} />
 
               {/* Category + check bubble */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <div style={{ fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: task.done ? '#595d6c' : color }}>
+                <div style={{ fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: done ? '#595d6c' : color }}>
                   {capitalizeFirst(task.category)}
                 </div>
                 <div
                   style={{
                     width: 22, height: 22, borderRadius: '50%',
-                    border: `1.5px solid ${task.done ? color : 'rgba(233,233,237,0.22)'}`,
-                    background: task.done ? color : 'transparent',
+                    border: `1.5px solid ${done ? color : 'rgba(233,233,237,0.22)'}`,
+                    background: done ? color : 'transparent',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     transition: 'all .3s ease',
                   }}
                 >
-                  {task.done && (
+                  {done && (
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
                       <path d="M2 6l3 3 5-5" stroke="#161826" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
@@ -256,15 +263,15 @@ export default function MobileTaskCard({
               </div>
 
               {/* Title */}
-              <div style={{ fontSize: 24, fontWeight: 400, color: task.done ? '#75798c' : '#e9e9ed', lineHeight: 1.3, overflowWrap: 'break-word', textDecoration: task.done ? 'line-through' : 'none', flex: 1 }}>
+              <div style={{ fontSize: 24, fontWeight: 400, color: done ? '#75798c' : '#e9e9ed', lineHeight: 1.3, overflowWrap: 'break-word', textDecoration: done ? 'line-through' : 'none', flex: 1 }}>
                 {task.title}
               </div>
 
               {/* Time + overdue */}
               {task.timeOfDay && (
-                <div style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', color: task.done ? '#595d6c' : '#75798c', marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', color: done ? '#595d6c' : '#75798c', marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
                   {formatTaskTime(task.timeOfDay)}
-                  {isOverdue && !task.done && <span style={{ fontSize: 10, color: 'rgba(220,38,38,0.7)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>overdue</span>}
+                  {isOverdue && !done && <span style={{ fontSize: 10, color: 'rgba(220,38,38,0.7)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>overdue</span>}
                 </div>
               )}
 
@@ -275,15 +282,15 @@ export default function MobileTaskCard({
                   style={{
                     marginTop: 20, height: 48, borderRadius: 14, cursor: 'pointer',
                     fontSize: 15, fontWeight: 500,
-                    background: task.done ? 'rgba(233,233,237,0.06)' : 'rgba(145,132,217,0.18)',
-                    border: `1px solid ${task.done ? 'rgba(233,233,237,0.12)' : 'rgba(145,132,217,0.45)'}`,
-                    color: task.done ? '#75798c' : '#b5abfc',
-                    boxShadow: task.done ? 'none' : '0 0 16px rgba(145,132,217,0.14)',
+                    background: done ? 'rgba(233,233,237,0.06)' : 'rgba(145,132,217,0.18)',
+                    border: `1px solid ${done ? 'rgba(233,233,237,0.12)' : 'rgba(145,132,217,0.45)'}`,
+                    color: done ? '#75798c' : '#b5abfc',
+                    boxShadow: done ? 'none' : '0 0 16px rgba(145,132,217,0.14)',
                     transition: 'all .25s ease',
                     width: '100%',
                   }}
                 >
-                  {task.done ? DAILY_TASKS.MOBILE_UNDO_BTN : DAILY_TASKS.MOBILE_DONE_BTN}
+                  {done ? DAILY_TASKS.MOBILE_UNDO_BTN : DAILY_TASKS.MOBILE_DONE_BTN}
                 </button>
               )}
             </div>
