@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { apiClient } from '@/lib/api/client'
+import { apiClient, getErrorMessage } from '@/lib/api/client'
 import { ROUTES } from '@/lib/constants/routes'
 import { FITNESS } from '@/locales/en'
 import { triggerEffect } from './ParticleEffect'
@@ -27,6 +27,7 @@ export default function WorkoutSession({ householdId }: WorkoutSessionProps) {
   const [elapsedMin, setElapsedMin] = useState(0)
   const [loading, setLoading] = useState(true)
   const [completing, setCompleting] = useState(false)
+  const [loadError, setLoadError] = useState('')
   const [setDoneAnim, setSetDoneAnim] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
   const [incompleteWarning, setIncompleteWarning] = useState(false)
@@ -57,7 +58,8 @@ export default function WorkoutSession({ householdId }: WorkoutSessionProps) {
 
         const activeSession = sessionRes.data.data
         if (!activeSession) {
-          router.replace(ROUTES.HOUSEHOLD_FITNESS(householdId))
+          console.error('[WorkoutSession] No active session found for household', householdId)
+          setLoadError(FITNESS.NO_ACTIVE_SESSION)
           return
         }
 
@@ -77,8 +79,9 @@ export default function WorkoutSession({ householdId }: WorkoutSessionProps) {
             : 1
           setCurrentSet(Math.min(maxSet, maxSets))
         }
-      } catch {
-        router.replace(ROUTES.HOUSEHOLD_FITNESS(householdId))
+      } catch (err) {
+        console.error('[WorkoutSession load]', err)
+        setLoadError(getErrorMessage(err))
       } finally {
         setLoading(false)
       }
@@ -203,6 +206,20 @@ export default function WorkoutSession({ householdId }: WorkoutSessionProps) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0f0f14]">
         <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#0f0f14] gap-4 px-4">
+        <p className="text-red-400 text-sm text-center">{loadError}</p>
+        <button
+          onClick={() => router.replace(ROUTES.HOUSEHOLD_FITNESS(householdId))}
+          className="text-purple-400 hover:text-purple-300 text-sm transition-colors"
+        >
+          {FITNESS.BACK_TO_ROUTINES}
+        </button>
       </div>
     )
   }

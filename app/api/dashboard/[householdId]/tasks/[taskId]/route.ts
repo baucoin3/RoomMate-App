@@ -21,6 +21,7 @@ async function getMembership(supabase: ReturnType<typeof createClient>, househol
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
+    console.log("\n\nEDIT PATHC CALLED\n\n")
     const supabase = createClient()
 
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -29,6 +30,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const { data: membership } = await getMembership(supabase, params.householdId, user.id)
+    console.log(`\n\nMembershipt = ${JSON.stringify(membership)}\n\n`);
     if (!membership) {
       return NextResponse.json({ error: HOUSEHOLDS.ERRORS.FORBIDDEN }, { status: 403 })
     }
@@ -39,6 +41,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       timeOfDay?: unknown
       logsToCalendar?: unknown
       scope?: unknown
+      targetCompletionsPerDay?: unknown
+      weeklyTarget?: unknown
     }
 
     const payload: Record<string, unknown> = {}
@@ -51,7 +55,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     if (typeof body.category === 'string') {
       const category = body.category.trim()
-      // Validate against household's actual categories
       const { count } = await supabase
         .from('task_categories')
         .select('id', { count: 'exact', head: true })
@@ -87,6 +90,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       payload.scope = body.scope as TaskScope
     }
 
+    if (typeof body.targetCompletionsPerDay === 'number' && body.targetCompletionsPerDay >= 1) {
+      payload.targetCompletionsPerDay = Math.floor(body.targetCompletionsPerDay)
+    }
+
+    if (typeof body.weeklyTarget === 'number' && body.weeklyTarget >= 1 && body.weeklyTarget <= 7) {
+      payload.weeklyTarget = Math.floor(body.weeklyTarget)
+    }
+
     const { data, error } = await updateDailyTask(
       supabase,
       params.taskId,
@@ -94,6 +105,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       user.id,
       payload,
     )
+    console.log(`\n\n Data from update daily task = ${JSON.stringify(data)} `)
+    console.log(`\n\n ERROR from update daily task = ${JSON.stringify(error)} `)
     if (error) return NextResponse.json({ error }, { status: 400 })
 
     return NextResponse.json({ data })

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import type { DailyTask, TaskScope } from '@/lib/types/dailyTasks'
 import type { TaskCategoryRecord } from '@/lib/types/taskCategories'
 import type { SoundEngine } from './SoundEngine'
@@ -12,6 +13,8 @@ export interface TaskDraft {
   time: string
   logsToCalendar: boolean
   scope: TaskScope
+  targetCompletionsPerDay: number
+  weeklyTarget: number
 }
 
 interface TaskSlideOverProps {
@@ -54,7 +57,7 @@ function storedToDisplay(t: string | null): string {
   return `${h12}:${mStr} ${period}`
 }
 
-const BLANK_DRAFT: TaskDraft = { title: '', category: '', time: '', logsToCalendar: true, scope: 'personal' }
+const BLANK_DRAFT: TaskDraft = { title: '', category: '', time: '', logsToCalendar: true, scope: 'personal', targetCompletionsPerDay: 1, weeklyTarget: 7 }
 
 const LABEL_STYLE: React.CSSProperties = {
   fontSize: 11, letterSpacing: '0.16em', color: '#75798c',
@@ -70,6 +73,16 @@ export default function TaskSlideOver({
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => setMounted(true), [])
+
+  useEffect(() => {
+    if (open) {
+      scrollRef.current?.scrollTo({ top: 0 })
+    }
+  }, [open])
 
   // Sync draft when editTask changes or panel opens
   useEffect(() => {
@@ -81,6 +94,8 @@ export default function TaskSlideOver({
           time: storedToDisplay(editTask.timeOfDay),
           logsToCalendar: editTask.logsToCalendar,
           scope: editTask.scope,
+          targetCompletionsPerDay: editTask.targetCompletionsPerDay ?? 1,
+          weeklyTarget: editTask.weeklyTarget ?? 7,
         })
       } else {
         setDraft(BLANK_DRAFT)
@@ -117,7 +132,9 @@ export default function TaskSlideOver({
     }
   }
 
-  return (
+  if (!mounted) return null
+
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -126,7 +143,7 @@ export default function TaskSlideOver({
           position: 'fixed', inset: 0,
           background: 'rgba(11,12,20,0.66)',
           backdropFilter: 'blur(6px)',
-          zIndex: 800,
+          zIndex: 1000,
           opacity: open ? 1 : 0,
           pointerEvents: open ? 'auto' : 'none',
           transition: 'opacity .35s ease',
@@ -135,12 +152,13 @@ export default function TaskSlideOver({
 
       {/* Panel */}
       <div
+        ref={scrollRef}
         style={{
           position: 'fixed', right: 0, top: 0, bottom: 0, width: 460,
           background: 'linear-gradient(200deg,#232532,#161826)',
           borderLeft: '1px solid rgba(233,233,237,0.08)',
           boxShadow: '-30px 0 80px rgba(0,0,0,0.5)',
-          zIndex: 900,
+          zIndex: 1001,
           transform: open ? 'translateX(0)' : 'translateX(30px)',
           opacity: open ? 1 : 0,
           pointerEvents: open ? 'auto' : 'none',
@@ -176,6 +194,63 @@ export default function TaskSlideOver({
             onFocus={(e) => { e.currentTarget.style.borderColor = '#9184d9' }}
             onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(233,233,237,0.1)' }}
           />
+        </div>
+
+        {/* Frequency */}
+        <div style={{ marginBottom: 24 }}>
+          <label style={LABEL_STYLE}>{DAILY_TASKS.SLIDE_TASK_TYPE_LABEL}</label>
+          <div style={{ display: 'flex', gap: 8, marginBottom: draft.targetCompletionsPerDay > 1 ? 12 : 0 }}>
+            <button
+              onClick={() => setDraft({ ...draft, targetCompletionsPerDay: 1 })}
+              style={{
+                flex: 1, height: 40, borderRadius: 20, cursor: 'pointer', fontSize: 13,
+                background: draft.targetCompletionsPerDay === 1 ? 'rgba(145,132,217,0.16)' : 'rgba(233,233,237,0.04)',
+                border: `1px solid ${draft.targetCompletionsPerDay === 1 ? '#9184d9' : 'rgba(233,233,237,0.08)'}`,
+                color: draft.targetCompletionsPerDay === 1 ? '#e9e9ed' : '#9397ab',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                transition: 'all .2s ease',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9 12l2 2 4-4" />
+              </svg>
+              {DAILY_TASKS.SLIDE_TASK_TYPE_ONCE}
+            </button>
+            <button
+              onClick={() => setDraft({ ...draft, targetCompletionsPerDay: draft.targetCompletionsPerDay > 1 ? draft.targetCompletionsPerDay : 2 })}
+              style={{
+                flex: 1, height: 40, borderRadius: 20, cursor: 'pointer', fontSize: 13,
+                background: draft.targetCompletionsPerDay > 1 ? 'rgba(145,132,217,0.16)' : 'rgba(233,233,237,0.04)',
+                border: `1px solid ${draft.targetCompletionsPerDay > 1 ? '#9184d9' : 'rgba(233,233,237,0.08)'}`,
+                color: draft.targetCompletionsPerDay > 1 ? '#e9e9ed' : '#9397ab',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                transition: 'all .2s ease',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <circle cx="9" cy="12" r="7" />
+                <circle cx="15" cy="12" r="7" />
+              </svg>
+              {DAILY_TASKS.SLIDE_TASK_TYPE_MULTI}
+            </button>
+          </div>
+          {draft.targetCompletionsPerDay > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 12, background: 'rgba(145,132,217,0.06)', border: '1px solid rgba(145,132,217,0.15)' }}>
+              <span style={{ fontSize: 13, color: '#9397ab', flex: 1 }}>{DAILY_TASKS.SLIDE_DAILY_TARGET_LABEL}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <button
+                  onClick={() => setDraft({ ...draft, targetCompletionsPerDay: Math.max(2, draft.targetCompletionsPerDay - 1) })}
+                  style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.12)', color: '#9397ab', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >−</button>
+                <span style={{ fontSize: 18, fontWeight: 400, color: '#e9e9ed', minWidth: 24, textAlign: 'center' }}>{draft.targetCompletionsPerDay}</span>
+                <button
+                  onClick={() => setDraft({ ...draft, targetCompletionsPerDay: Math.min(20, draft.targetCompletionsPerDay + 1) })}
+                  style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.12)', color: '#9397ab', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >+</button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Category — dynamic */}
@@ -232,6 +307,25 @@ export default function TaskSlideOver({
           </div>
           <div style={{ fontSize: 11, color: '#595d6c', marginTop: 6 }}>
             {draft.scope === 'personal' ? 'Only visible to you' : 'Visible to all household members'}
+          </div>
+        </div>
+
+        {/* Weekly goal */}
+        <div style={{ marginBottom: 24 }}>
+          <label style={LABEL_STYLE}>{DAILY_TASKS.SLIDE_WEEKLY_TARGET_LABEL}</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 12, background: 'rgba(233,233,237,0.04)', border: '1px solid rgba(233,233,237,0.08)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                onClick={() => setDraft({ ...draft, weeklyTarget: Math.max(1, draft.weeklyTarget - 1) })}
+                style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.12)', color: '#9397ab', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >−</button>
+              <span style={{ fontSize: 18, fontWeight: 400, color: '#e9e9ed', minWidth: 24, textAlign: 'center' }}>{draft.weeklyTarget}</span>
+              <button
+                onClick={() => setDraft({ ...draft, weeklyTarget: Math.min(7, draft.weeklyTarget + 1) })}
+                style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.12)', color: '#9397ab', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >+</button>
+            </div>
+            <span style={{ fontSize: 13, color: '#75798c' }}>{DAILY_TASKS.SLIDE_WEEKLY_TARGET_HINT(draft.weeklyTarget)}</span>
           </div>
         </div>
 
@@ -374,6 +468,7 @@ export default function TaskSlideOver({
           </button>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   )
 }

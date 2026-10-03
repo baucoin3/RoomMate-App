@@ -34,7 +34,7 @@ function storedToDisplay(t: string | null): string {
   return `${h12}:${mStr} ${period}`
 }
 
-const BLANK_DRAFT: TaskDraft = { title: '', category: '', time: '', logsToCalendar: true, scope: 'personal' }
+const BLANK_DRAFT: TaskDraft = { title: '', category: '', time: '', logsToCalendar: true, scope: 'personal', targetCompletionsPerDay: 1, weeklyTarget: 7 }
 
 interface MobileTaskSheetProps {
   open: boolean
@@ -65,6 +65,8 @@ export default function MobileTaskSheet({
           time: storedToDisplay(editTask.timeOfDay),
           logsToCalendar: editTask.logsToCalendar,
           scope: editTask.scope,
+          targetCompletionsPerDay: editTask.targetCompletionsPerDay ?? 1,
+          weeklyTarget: editTask.weeklyTarget ?? 7,
         })
       } else {
         setDraft(BLANK_DRAFT)
@@ -286,8 +288,7 @@ export default function MobileTaskSheet({
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '14px 0',
               borderTop: '1px solid rgba(233,233,237,0.06)',
-              borderBottom: '1px solid rgba(233,233,237,0.06)',
-              marginBottom: 6,
+              marginBottom: 18,
             }}
           >
             <div>
@@ -312,6 +313,86 @@ export default function MobileTaskSheet({
                 }}
               />
             </button>
+          </div>
+
+          {/* Frequency */}
+          <div style={{ marginBottom: 18 }}>
+            <label style={LABEL}>{DAILY_TASKS.SLIDE_TASK_TYPE_LABEL}</label>
+            <div style={{ display: 'flex', gap: 7, marginBottom: draft.targetCompletionsPerDay > 1 ? 12 : 0 }}>
+              {[
+                { label: DAILY_TASKS.SLIDE_TASK_TYPE_ONCE, multi: false },
+                { label: DAILY_TASKS.SLIDE_TASK_TYPE_MULTI, multi: true },
+              ].map(({ label, multi }) => {
+                const sel = multi ? draft.targetCompletionsPerDay > 1 : draft.targetCompletionsPerDay === 1
+                return (
+                  <button
+                    key={label}
+                    onClick={() => setDraft({ ...draft, targetCompletionsPerDay: multi ? Math.max(2, draft.targetCompletionsPerDay > 1 ? draft.targetCompletionsPerDay : 2) : 1 })}
+                    style={{
+                      flex: 1, height: 38, borderRadius: 19, cursor: 'pointer',
+                      fontSize: 13, fontWeight: sel ? 500 : 400,
+                      background: sel ? 'rgba(145,132,217,0.16)' : 'rgba(233,233,237,0.04)',
+                      border: `1px solid ${sel ? '#9184d9' : 'rgba(233,233,237,0.08)'}`,
+                      color: sel ? '#e9e9ed' : '#9397ab',
+                      transition: 'all .2s ease',
+                    }}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+            {draft.targetCompletionsPerDay > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 12, color: '#75798c' }}>{DAILY_TASKS.SLIDE_DAILY_TARGET_LABEL}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <button
+                    onClick={() => setDraft({ ...draft, targetCompletionsPerDay: Math.max(2, draft.targetCompletionsPerDay - 1) })}
+                    style={{ width: 32, height: 32, borderRadius: 10, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.1)', color: '#9397ab', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    −
+                  </button>
+                  <span style={{ fontSize: 18, fontWeight: 600, color: '#e9e9ed', minWidth: 24, textAlign: 'center' }}>
+                    {draft.targetCompletionsPerDay}
+                  </span>
+                  <button
+                    onClick={() => setDraft({ ...draft, targetCompletionsPerDay: Math.min(20, draft.targetCompletionsPerDay + 1) })}
+                    style={{ width: 32, height: 32, borderRadius: 10, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.1)', color: '#9397ab', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Weekly goal */}
+          <div style={{ marginBottom: 18, borderTop: '1px solid rgba(233,233,237,0.06)', paddingTop: 18 }}>
+            <label style={LABEL}>{DAILY_TASKS.SLIDE_WEEKLY_TARGET_LABEL}</label>
+            <div style={{ display: 'flex', gap: 5, marginBottom: 8 }}>
+              {[1, 2, 3, 4, 5, 6, 7].map((n) => {
+                const sel = draft.weeklyTarget === n
+                return (
+                  <button
+                    key={n}
+                    onClick={() => setDraft({ ...draft, weeklyTarget: n })}
+                    style={{
+                      flex: 1, height: 34, borderRadius: 10, cursor: 'pointer',
+                      fontSize: 13, fontWeight: sel ? 600 : 400,
+                      background: sel ? 'rgba(145,132,217,0.16)' : 'rgba(233,233,237,0.04)',
+                      border: `1px solid ${sel ? '#9184d9' : 'rgba(233,233,237,0.08)'}`,
+                      color: sel ? '#e9e9ed' : '#9397ab',
+                      transition: 'all .2s ease',
+                    }}
+                  >
+                    {n}
+                  </button>
+                )
+              })}
+            </div>
+            <div style={{ fontSize: 11, color: '#595d6c' }}>
+              {DAILY_TASKS.SLIDE_WEEKLY_TARGET_HINT(draft.weeklyTarget)}
+            </div>
           </div>
 
           {/* Delete (edit mode) */}

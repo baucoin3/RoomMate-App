@@ -10,7 +10,6 @@ import TodayPanel from './TodayPanel'
 import CalendarFilmStrip from './CalendarFilmStrip'
 import WheelPanel from './WheelPanel'
 import TaskSlideOver, { type TaskDraft } from './TaskSlideOver'
-import ManageTasksSlideOver from './ManageTasksSlideOver'
 import AddCategoryModal from './AddCategoryModal'
 import JackpotOverlay from './JackpotOverlay'
 
@@ -45,7 +44,6 @@ export default function NocturneHome({
 
   const [creating, setCreating] = useState(false)
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null)
-  const [managing, setManaging] = useState(false)
   const [showAddCategory, setShowAddCategory] = useState(false)
   const [jackpot, setJackpot] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -91,30 +89,42 @@ export default function NocturneHome({
 
   // ── Task completion ──────────────────────────────────────────────────────────
 
-  async function handleComplete(taskId: string) {
+  async function handleComplete(taskId: string): Promise<{ isFullyDone: boolean }> {
     const task = tasks.find((t) => t.id === taskId)
-    if (!task) return
-    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
-    setEvents((prev) => ({
-      ...prev,
-      [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev),
-    }))
-    try {
-      await apiClient.post(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
-      showToast(DAILY_TASKS.TOAST_COMPLETED, categoryMap[task.category] ?? '#9184d9')
-    } catch (err) {
-      console.error('[NocturneHome.handleComplete]', err)
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
+    if (!task) return { isFullyDone: false }
+    const newCount = task.completionCount + 1
+    const isFullyDone = newCount >= task.targetCompletionsPerDay
+    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, completionCount: newCount, done: isFullyDone } : t))
+    if (isFullyDone) {
       setEvents((prev) => ({
         ...prev,
-        [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev),
+        [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev),
       }))
+    }
+    try {
+      const res = await apiClient.post<{ data: unknown; isFullyDone: boolean }>(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
+      const serverFullyDone = res.data.isFullyDone
+      if (serverFullyDone) {
+        showToast(DAILY_TASKS.TOAST_COMPLETED, categoryMap[task.category] ?? '#9184d9')
+      }
+      return { isFullyDone: serverFullyDone }
+    } catch (err) {
+      console.error('[NocturneHome.handleComplete]', err)
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, completionCount: task.completionCount, done: task.done } : t))
+      if (isFullyDone) {
+        setEvents((prev) => ({
+          ...prev,
+          [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev),
+        }))
+      }
       showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
+      return { isFullyDone: false }
     }
   }
 
   async function handleUncomplete(taskId: string) {
-    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
+    const task = tasks.find((t) => t.id === taskId)
+    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false, completionCount: 0 } : t))
     setEvents((prev) => ({
       ...prev,
       [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev),
@@ -123,7 +133,7 @@ export default function NocturneHome({
       await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
     } catch (err) {
       console.error('[NocturneHome.handleUncomplete]', err)
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: task?.done ?? true, completionCount: task?.completionCount ?? 1 } : t))
       setEvents((prev) => ({
         ...prev,
         [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev),
@@ -135,30 +145,46 @@ export default function NocturneHome({
   // Toggle a task from the calendar (specific date, may be past/future)
   async function handleCalendarTaskToggle(taskId: string, date: string, currentlyDone: boolean) {
     soundRef.current?.playSwipe()
-    setEvents((prev) => ({
-      ...prev,
-      [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: !currentlyDone } : ev),
-    }))
-    if (date === todayISO) {
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: !currentlyDone } : t))
-    }
-    try {
-      if (currentlyDone) {
-        await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete?date=${date}`)
-      } else {
-        await apiClient.post(`/api/dashboard/${householdId}/tasks/${taskId}/complete`, { date })
-      }
-      showToast(currentlyDone ? DAILY_TASKS.TOAST_CALENDAR_UNDONE : DAILY_TASKS.TOAST_CALENDAR_DONE)
-    } catch (err) {
-      console.error('[NocturneHome.handleCalendarTaskToggle]', err)
+    const evEntry = (events[date] ?? []).find((e) => e.taskId === taskId)
+    const target = evEntry?.targetCompletionsPerDay ?? 1
+    const currentCount = evEntry?.completionCount ?? (currentlyDone ? target : 0)
+
+    if (currentlyDone) {
       setEvents((prev) => ({
         ...prev,
-        [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: currentlyDone } : ev),
+        [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false, completionCount: 0 } : ev),
       }))
       if (date === todayISO) {
-        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: currentlyDone } : t))
+        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false, completionCount: 0 } : t))
       }
-      showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
+      try {
+        await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete?date=${date}`)
+        showToast(DAILY_TASKS.TOAST_CALENDAR_UNDONE)
+      } catch (err) {
+        console.error('[NocturneHome.handleCalendarTaskToggle/uncomplete]', err)
+        setEvents((prev) => ({ ...prev, [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true, completionCount: currentCount } : ev) }))
+        if (date === todayISO) setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true, completionCount: currentCount } : t))
+        showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
+      }
+    } else {
+      const newCount = currentCount + 1
+      const isFullyDone = newCount >= target
+      setEvents((prev) => ({
+        ...prev,
+        [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: isFullyDone, completionCount: newCount } : ev),
+      }))
+      if (date === todayISO) {
+        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: isFullyDone, completionCount: newCount } : t))
+      }
+      try {
+        await apiClient.post(`/api/dashboard/${householdId}/tasks/${taskId}/complete`, { date })
+        if (isFullyDone) showToast(DAILY_TASKS.TOAST_CALENDAR_DONE)
+      } catch (err) {
+        console.error('[NocturneHome.handleCalendarTaskToggle/complete]', err)
+        setEvents((prev) => ({ ...prev, [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false, completionCount: currentCount } : ev) }))
+        if (date === todayISO) setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false, completionCount: currentCount } : t))
+        showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
+      }
     }
   }
 
@@ -168,7 +194,7 @@ export default function NocturneHome({
     if (resetting) return
     setResetting(true)
     const prevTasks = tasks
-    setTasks((prev) => prev.map((t) => ({ ...t, done: false })))
+    setTasks((prev) => prev.map((t) => ({ ...t, done: false, completionCount: 0 })))
     const liveToday = new Date().toLocaleDateString('en-CA')
     setEvents((prev) => ({
       ...prev,
@@ -198,6 +224,8 @@ export default function NocturneHome({
         timeOfDay: draft.time || null,
         logsToCalendar: draft.logsToCalendar,
         scope: draft.scope,
+        targetCompletionsPerDay: draft.targetCompletionsPerDay,
+        weeklyTarget: draft.weeklyTarget,
       })
       const newTask = res.data.data
       const next = sortTasks([...tasks, newTask])
@@ -224,6 +252,8 @@ export default function NocturneHome({
       timeOfDay: draft.time || null,
       logsToCalendar: draft.logsToCalendar,
       scope: draft.scope,
+      targetCompletionsPerDay: draft.targetCompletionsPerDay,
+      weeklyTarget: draft.weeklyTarget,
     })
     const updated = res.data.data
     setTasks((prev) => sortTasks(prev.map((t) => t.id === taskId ? updated : t)))
@@ -263,9 +293,27 @@ export default function NocturneHome({
 
   async function handleDeleteCategory(categoryId: string) {
     const cat = categories.find((c) => c.id === categoryId)
-    await apiClient.delete(`/api/dashboard/${householdId}/task-categories/${categoryId}`)
-    setCategories((prev) => prev.filter((c) => c.id !== categoryId))
-    if (cat) showToast(DAILY_TASKS.TOAST_CATEGORY_DELETED(cat.name), '#d97777')
+    try {
+      await apiClient.delete(`/api/dashboard/${householdId}/task-categories/${categoryId}`)
+      setCategories((prev) => prev.filter((c) => c.id !== categoryId))
+      if (cat) showToast(DAILY_TASKS.TOAST_CATEGORY_DELETED(cat.name), '#d97777')
+    } catch (err) {
+      const axiosErr = err as { response?: { status?: number; data?: { taskTitles?: string[] } } }
+      if (axiosErr.response?.status === 409 && axiosErr.response.data?.taskTitles) {
+        throw new Error(DAILY_TASKS.CATEGORY_IN_USE_BY(axiosErr.response.data.taskTitles))
+      }
+      throw new Error(getErrorMessage(err))
+    }
+  }
+
+  async function handleUpdateCategory(categoryId: string, name: string, color: string) {
+    const res = await apiClient.patch<{ data: TaskCategoryRecord }>(
+      `/api/dashboard/${householdId}/task-categories/${categoryId}`,
+      { name, color },
+    )
+    const updated = res.data.data
+    setCategories((prev) => prev.map((c) => c.id === categoryId ? updated : c))
+    showToast(DAILY_TASKS.TOAST_CATEGORY_UPDATED(name), color)
   }
 
   // ── Calendar events ──────────────────────────────────────────────────────────
@@ -379,16 +427,6 @@ export default function NocturneHome({
           {DAILY_TASKS.RESET_DAY}
         </button>
 
-        {/* Manage tasks */}
-        <button
-          onClick={() => setManaging(true)}
-          style={{ height: 34, padding: '0 14px', borderRadius: 20, cursor: 'pointer', fontSize: 12, background: 'transparent', border: '1px solid rgba(233,233,237,0.1)', color: '#75798c', transition: 'all .25s ease' }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = '#9397ab'; e.currentTarget.style.borderColor = 'rgba(233,233,237,0.2)' }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = '#75798c'; e.currentTarget.style.borderColor = 'rgba(233,233,237,0.1)' }}
-        >
-          {DAILY_TASKS.MANAGE_TASKS}
-        </button>
-
         {/* Add category */}
         <button
           onClick={() => setShowAddCategory(true)}
@@ -417,7 +455,20 @@ export default function NocturneHome({
       <div style={{ flex: 1, position: 'relative', padding: '20px 32px 0', overflow: 'hidden' }}>
         {/* Today */}
         <div style={{ position: 'absolute', inset: '20px 32px 0', opacity: tab === 'today' ? 1 : 0, transform: tab === 'today' ? 'translateY(0) scale(1)' : 'translateY(16px) scale(0.985)', pointerEvents: tab === 'today' ? 'auto' : 'none', transition: 'opacity .45s ease, transform .55s cubic-bezier(.2,.8,.2,1)' }}>
-          <TodayPanel tasks={tasks} events={todayEvents} weeklyRate={weeklyRate} categoryMap={categoryMap} now={now} struggleStats={struggleStats} />
+          <TodayPanel
+            tasks={tasks}
+            events={todayEvents}
+            weeklyRate={weeklyRate}
+            categoryMap={categoryMap}
+            now={now}
+            struggleStats={struggleStats}
+            onEditTask={(taskId) => {
+              const task = tasks.find((t) => t.id === taskId)
+              if (!task) return
+              soundRef.current?.playOpenPanel()
+              setEditingTask(task)
+            }}
+          />
         </div>
 
         {/* Calendar */}
@@ -448,6 +499,8 @@ export default function NocturneHome({
             springIndex={springIndex}
             onComplete={handleComplete}
             onUncomplete={handleUncomplete}
+            onEditTask={(task) => { soundRef.current?.playOpenPanel(); setEditingTask(task) }}
+            onDeleteTask={handleDeleteTask}
             onJackpot={() => setJackpot(true)}
             todayEvents={todayEvents}
           />
@@ -468,21 +521,14 @@ export default function NocturneHome({
         soundRef={soundRef}
       />
 
-      {/* Manage tasks */}
-      <ManageTasksSlideOver
-        open={managing}
-        tasks={tasks}
-        categoryMap={categoryMap}
-        onClose={() => setManaging(false)}
-        onEditTask={(task) => { setManaging(false); setEditingTask(task) }}
-        onDeleteTask={handleDeleteTask}
-      />
-
-      {/* Add category modal */}
+      {/* Add / manage category modal */}
       <AddCategoryModal
         open={showAddCategory}
+        categories={categories}
         onClose={() => setShowAddCategory(false)}
         onSave={handleCreateCategory}
+        onDelete={handleDeleteCategory}
+        onEdit={handleUpdateCategory}
       />
 
       {/* Jackpot overlay */}

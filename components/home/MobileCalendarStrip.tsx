@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import type { NocturneCalendarData, NocturneCalendarEvent, TaskScope } from '@/lib/types/dailyTasks'
 import { DAILY_TASKS } from '@/locales/en'
 
@@ -37,6 +37,7 @@ export default function MobileCalendarStrip({
   const todayISO = toISO(now)
   const [weekOffset, setWeekOffset] = useState(0)
   const [selectedISO, setSelectedISO] = useState(todayISO)
+  const dayTapRef = useRef<{ iso: string; x: number; y: number } | null>(null)
   const [addTitle, setAddTitle] = useState('')
   const [addScope, setAddScope] = useState<TaskScope>('personal')
   const [adding, setAdding] = useState(false)
@@ -118,7 +119,15 @@ export default function MobileCalendarStrip({
             return (
               <button
                 key={iso}
-                onClick={() => setSelectedISO(iso)}
+                onPointerDown={(e) => { dayTapRef.current = { iso, x: e.clientX, y: e.clientY } }}
+                onPointerUp={(e) => {
+                  if (!dayTapRef.current || dayTapRef.current.iso !== iso) return
+                  const dx = e.clientX - dayTapRef.current.x
+                  const dy = e.clientY - dayTapRef.current.y
+                  if (Math.hypot(dx, dy) < 8) setSelectedISO(iso)
+                  dayTapRef.current = null
+                }}
+                onPointerCancel={() => { dayTapRef.current = null }}
                 style={{
                   flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
                   padding: '8px 2px', borderRadius: 12, cursor: 'pointer',
@@ -180,6 +189,7 @@ export default function MobileCalendarStrip({
 
                 // ── Task row ────────────────────────────────────────────────────
                 if (ev.type === 'task') {
+                  const isPartial = (ev.completionCount ?? 0) > 0 && !ev.done
                   return (
                     <div
                       key={i}
@@ -196,7 +206,7 @@ export default function MobileCalendarStrip({
                         onClick={() => ev.taskId && onTaskToggled(ev.taskId, selectedISO, !!ev.done)}
                         style={{
                           width: 22, height: 22, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
-                          border: `1.5px solid ${ev.done ? color : 'rgba(233,233,237,0.25)'}`,
+                          border: `1.5px ${isPartial ? 'dashed' : 'solid'} ${ev.done || isPartial ? color : 'rgba(233,233,237,0.25)'}`,
                           background: ev.done ? color : 'transparent',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           transition: 'all .2s ease',
@@ -216,6 +226,11 @@ export default function MobileCalendarStrip({
                           <div style={{ fontSize: 11, color: '#75798c', marginTop: 1 }}>{ev.time}</div>
                         )}
                       </div>
+                      {(ev.targetCompletionsPerDay ?? 1) > 1 && (
+                        <span style={{ fontSize: 11, fontWeight: 600, color: ev.done ? '#595d6c' : color, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                          {ev.completionCount ?? 0}/{ev.targetCompletionsPerDay}
+                        </span>
+                      )}
                       {ev.taskId && (
                         <button
                           onClick={() => onEditTask(ev.taskId!)}

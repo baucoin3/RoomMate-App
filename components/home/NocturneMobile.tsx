@@ -99,40 +99,56 @@ export default function NocturneMobile({
 
   async function handleComplete(taskId: string) {
     const task = tasks.find((t) => t.id === taskId)
-    if (!task) return
-    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
+    if (!task || task.done) return
+    const newCount = task.completionCount + 1
+    const willBeFullyDone = newCount >= task.targetCompletionsPerDay
+    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, completionCount: newCount, done: willBeFullyDone } : t))
     setEvents((prev) => ({
       ...prev,
-      [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev),
+      [todayISO]: (prev[todayISO] ?? []).map((ev) =>
+        ev.taskId === taskId ? { ...ev, completionCount: newCount, done: willBeFullyDone } : ev
+      ),
     }))
     try {
       await apiClient.post(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
-      showToast(DAILY_TASKS.TOAST_COMPLETED, categoryMap[task.category] ?? '#9184d9')
+      const color = categoryMap[task.category] ?? '#9184d9'
+      if (willBeFullyDone) {
+        showToast(DAILY_TASKS.TOAST_COMPLETED, color)
+      } else {
+        showToast(DAILY_TASKS.TOAST_PARTIAL(newCount, task.targetCompletionsPerDay), color)
+      }
     } catch (err) {
       console.error('[NocturneMobile.handleComplete]', err)
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, completionCount: task.completionCount, done: task.done } : t))
       setEvents((prev) => ({
         ...prev,
-        [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev),
+        [todayISO]: (prev[todayISO] ?? []).map((ev) =>
+          ev.taskId === taskId ? { ...ev, completionCount: task.completionCount, done: task.done } : ev
+        ),
       }))
       showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
     }
   }
 
   async function handleUncomplete(taskId: string) {
-    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
+    const task = tasks.find((t) => t.id === taskId)
+    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, completionCount: 0, done: false } : t))
     setEvents((prev) => ({
       ...prev,
-      [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev),
+      [todayISO]: (prev[todayISO] ?? []).map((ev) =>
+        ev.taskId === taskId ? { ...ev, completionCount: 0, done: false } : ev
+      ),
     }))
     try {
       await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
     } catch (err) {
       console.error('[NocturneMobile.handleUncomplete]', err)
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, completionCount: task?.completionCount ?? 0, done: task?.done ?? false } : t))
       setEvents((prev) => ({
         ...prev,
-        [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev),
+        [todayISO]: (prev[todayISO] ?? []).map((ev) =>
+          ev.taskId === taskId ? { ...ev, completionCount: task?.completionCount ?? 0, done: task?.done ?? false } : ev
+        ),
       }))
       showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
     }
@@ -140,28 +156,66 @@ export default function NocturneMobile({
 
   async function handleCalendarTaskToggle(taskId: string, date: string, currentlyDone: boolean) {
     soundRef.current?.playSwipe()
-    setEvents((prev) => ({
-      ...prev,
-      [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: !currentlyDone } : ev),
-    }))
-    if (date === todayISO) {
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: !currentlyDone } : t))
+    if (currentlyDone) {
+      // Clear all completions for this date
+      setEvents((prev) => ({
+        ...prev,
+        [date]: (prev[date] ?? []).map((ev) =>
+          ev.taskId === taskId ? { ...ev, completionCount: 0, done: false } : ev
+        ),
+      }))
+      if (date === todayISO) {
+        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, completionCount: 0, done: false } : t))
+      }
+    } else {
+      // Increment completion count for this date
+      setEvents((prev) => ({
+        ...prev,
+        [date]: (prev[date] ?? []).map((ev) => {
+          if (ev.taskId !== taskId) return ev
+          const newCount = (ev.completionCount ?? 0) + 1
+          const isFullyDone = newCount >= (ev.targetCompletionsPerDay ?? 1)
+          return { ...ev, completionCount: newCount, done: isFullyDone }
+        }),
+      }))
+      if (date === todayISO) {
+        setTasks((prev) => prev.map((t) => {
+          if (t.id !== taskId) return t
+          const newCount = t.completionCount + 1
+          return { ...t, completionCount: newCount, done: newCount >= t.targetCompletionsPerDay }
+        }))
+      }
     }
     try {
       if (currentlyDone) {
         await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete?date=${date}`)
+        showToast(DAILY_TASKS.TOAST_CALENDAR_UNDONE)
       } else {
         await apiClient.post(`/api/dashboard/${householdId}/tasks/${taskId}/complete`, { date })
+        showToast(DAILY_TASKS.TOAST_CALENDAR_DONE)
       }
-      showToast(currentlyDone ? DAILY_TASKS.TOAST_CALENDAR_UNDONE : DAILY_TASKS.TOAST_CALENDAR_DONE)
     } catch (err) {
       console.error('[NocturneMobile.handleCalendarTaskToggle]', err)
+      // Rollback
       setEvents((prev) => ({
         ...prev,
-        [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: currentlyDone } : ev),
+        [date]: (prev[date] ?? []).map((ev) => {
+          if (ev.taskId !== taskId) return ev
+          if (currentlyDone) {
+            const target = ev.targetCompletionsPerDay ?? 1
+            return { ...ev, completionCount: target, done: true }
+          }
+          const prevCount = Math.max(0, (ev.completionCount ?? 1) - 1)
+          return { ...ev, completionCount: prevCount, done: false }
+        }),
       }))
       if (date === todayISO) {
-        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: currentlyDone } : t))
+        setTasks((prev) => prev.map((t) => {
+          if (t.id !== taskId) return t
+          if (currentlyDone) return { ...t, completionCount: t.targetCompletionsPerDay, done: true }
+          const prevCount = Math.max(0, t.completionCount - 1)
+          return { ...t, completionCount: prevCount, done: false }
+        }))
       }
       showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
     }
@@ -173,11 +227,11 @@ export default function NocturneMobile({
     if (resetting) return
     setResetting(true)
     const prevTasks = tasks
-    setTasks((prev) => prev.map((t) => ({ ...t, done: false })))
+    setTasks((prev) => prev.map((t) => ({ ...t, done: false, completionCount: 0 })))
     const liveToday = new Date().toLocaleDateString('en-CA')
     setEvents((prev) => ({
       ...prev,
-      [liveToday]: (prev[liveToday] ?? []).map((ev) => ev.type === 'task' ? { ...ev, done: false } : ev),
+      [liveToday]: (prev[liveToday] ?? []).map((ev) => ev.type === 'task' ? { ...ev, done: false, completionCount: 0 } : ev),
     }))
     soundRef.current?.playFlush()
     try {
@@ -203,6 +257,8 @@ export default function NocturneMobile({
         timeOfDay: draft.time || null,
         logsToCalendar: draft.logsToCalendar,
         scope: draft.scope,
+        targetCompletionsPerDay: draft.targetCompletionsPerDay,
+        weeklyTarget: draft.weeklyTarget,
       })
       const newTask = res.data.data
       const next = sortTasks([...tasks, newTask])
@@ -229,6 +285,8 @@ export default function NocturneMobile({
       timeOfDay: draft.time || null,
       logsToCalendar: draft.logsToCalendar,
       scope: draft.scope,
+      targetCompletionsPerDay: draft.targetCompletionsPerDay,
+      weeklyTarget: draft.weeklyTarget,
     })
     const updated = res.data.data
     setTasks((prev) => sortTasks(prev.map((t) => t.id === taskId ? updated : t)))
@@ -267,9 +325,27 @@ export default function NocturneMobile({
 
   async function handleDeleteCategory(categoryId: string) {
     const cat = categories.find((c) => c.id === categoryId)
-    await apiClient.delete(`/api/dashboard/${householdId}/task-categories/${categoryId}`)
-    setCategories((prev) => prev.filter((c) => c.id !== categoryId))
-    if (cat) showToast(DAILY_TASKS.TOAST_CATEGORY_DELETED(cat.name), '#d97777')
+    try {
+      await apiClient.delete(`/api/dashboard/${householdId}/task-categories/${categoryId}`)
+      setCategories((prev) => prev.filter((c) => c.id !== categoryId))
+      if (cat) showToast(DAILY_TASKS.TOAST_CATEGORY_DELETED(cat.name), '#d97777')
+    } catch (err) {
+      const axiosErr = err as { response?: { status?: number; data?: { taskTitles?: string[] } } }
+      if (axiosErr.response?.status === 409 && axiosErr.response.data?.taskTitles) {
+        throw new Error(DAILY_TASKS.CATEGORY_IN_USE_BY(axiosErr.response.data.taskTitles))
+      }
+      throw new Error(getErrorMessage(err))
+    }
+  }
+
+  async function handleUpdateCategory(categoryId: string, name: string, color: string) {
+    const res = await apiClient.patch<{ data: TaskCategoryRecord }>(
+      `/api/dashboard/${householdId}/task-categories/${categoryId}`,
+      { name, color },
+    )
+    const updated = res.data.data
+    setCategories((prev) => prev.map((c) => c.id === categoryId ? updated : c))
+    showToast(DAILY_TASKS.TOAST_CATEGORY_UPDATED(name), color)
   }
 
   // ── Calendar events ──────────────────────────────────────────────────────────
@@ -428,8 +504,9 @@ export default function NocturneMobile({
             springIndex={springIndex}
             onComplete={handleComplete}
             onUncomplete={handleUncomplete}
+            onEditTask={(task) => setEditingTask(task)}
+            onDeleteTask={handleDeleteTask}
             onJackpot={() => setJackpot(true)}
-            todayEvents={todayEvents}
           />
         </div>
       </div>
@@ -455,11 +532,14 @@ export default function NocturneMobile({
         onDeleteTask={handleDeleteTask}
       />
 
-      {/* Add category modal (reused as-is) */}
+      {/* Add / manage category modal */}
       <AddCategoryModal
         open={showAddCategory}
+        categories={categories}
         onClose={() => setShowAddCategory(false)}
         onSave={handleCreateCategory}
+        onDelete={handleDeleteCategory}
+        onEdit={handleUpdateCategory}
       />
 
       {/* Jackpot overlay (reused as-is) */}

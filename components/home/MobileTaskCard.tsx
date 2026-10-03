@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
-import type { DailyTask, NocturneCalendarEvent } from '@/lib/types/dailyTasks'
+import type { DailyTask } from '@/lib/types/dailyTasks'
 import type { SoundEngine } from './SoundEngine'
 import BurstAnimation from './BurstAnimation'
 import { DAILY_TASKS } from '@/locales/en'
@@ -44,12 +44,13 @@ interface MobileTaskCardProps {
   springIndex: number
   onComplete: (taskId: string) => Promise<void>
   onUncomplete: (taskId: string) => Promise<void>
-  todayEvents: NocturneCalendarEvent[]
+  onEditTask: (task: DailyTask) => void
+  onDeleteTask: (taskId: string) => Promise<void>
   onJackpot?: () => void
 }
 
 export default function MobileTaskCard({
-  tasks, now, categoryMap, soundRef, springNonce, springIndex, onComplete, onUncomplete, onJackpot, todayEvents,
+  tasks, now, categoryMap, soundRef, springNonce, springIndex, onComplete, onUncomplete, onEditTask, onDeleteTask, onJackpot,
 }: MobileTaskCardProps) {
   const nowMins = now.getHours() * 60 + now.getMinutes()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -59,6 +60,7 @@ export default function MobileTaskCard({
   const rafRef = useRef<number | null>(null)
   const lastDetentRef = useRef(0)
   const [burst, setBurst] = useState<{ color: string; key: number } | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const completingRef = useRef(false)
 
   const prevNonceRef = useRef(springNonce)
@@ -129,23 +131,21 @@ export default function MobileTaskCard({
     startSpring()
   }
 
-  function isTaskDone(taskId: string): boolean {
-    return todayEvents.some((e) => e.taskId === taskId && e.done === true)
-  }
-
   async function handleCompleteCard(task: DailyTask) {
     if (completingRef.current) return
     completingRef.current = true
     soundRef.current?.playTap()
-    const done = isTaskDone(task.id)
     try {
-      if (done) {
+      if (task.done) {
         await onUncomplete(task.id)
       } else {
         await onComplete(task.id)
-        soundRef.current?.playComplete()
-        setBurst({ color: catColor(task.category, categoryMap), key: Date.now() })
-        if (onJackpot && Math.random() < 0.15) onJackpot()
+        const willBeFullyDone = task.completionCount + 1 >= task.targetCompletionsPerDay
+        if (willBeFullyDone) {
+          soundRef.current?.playComplete()
+          setBurst({ color: catColor(task.category, categoryMap), key: Date.now() })
+          if (onJackpot && Math.random() < 0.15) onJackpot()
+        }
       }
     } finally {
       completingRef.current = false
@@ -162,6 +162,12 @@ export default function MobileTaskCard({
 
   const centreIndex = Math.round(pos)
   const centreTask = tasks[centreIndex]
+
+  const prevCentreRef = useRef(centreIndex)
+  if (prevCentreRef.current !== centreIndex) {
+    prevCentreRef.current = centreIndex
+    if (confirmDeleteId !== null) setConfirmDeleteId(null)
+  }
   const glowColor = centreTask ? (categoryMap[centreTask.category] ?? '#75798c') : '#75798c'
 
   return (
@@ -202,7 +208,8 @@ export default function MobileTaskCard({
           const isCentre = Math.abs(o) < 0.35
           const color = catColor(task.category, categoryMap)
           const taskMins = task.timeOfDay ? timeToMins(task.timeOfDay) : null
-          const done = isTaskDone(task.id)
+          const done = task.done
+          const isPartial = task.completionCount > 0 && !done
           const isOverdue = taskMins !== null && nowMins > taskMins && !done
           const zIdx = 10 - Math.round(Math.abs(o) * 2)
 
@@ -238,17 +245,65 @@ export default function MobileTaskCard({
               }}
             >
               {/* Color bar at top */}
-              <div style={{ height: 3, borderRadius: 2, marginBottom: 18, background: done ? 'rgba(233,233,237,0.06)' : `linear-gradient(90deg,${color},transparent)` }} />
+              <div style={{ height: 3, borderRadius: 2, marginBottom: 14, background: done ? 'rgba(233,233,237,0.06)' : `linear-gradient(90deg,${color},transparent)` }} />
 
-              {/* Category + check bubble */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              {/* Category eyebrow + edit/delete icons (centre card only) */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                 <div style={{ fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: done ? '#595d6c' : color }}>
                   {capitalizeFirst(task.category)}
                 </div>
+                {isCentre && (
+                  confirmDeleteId === task.id ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ fontSize: 11, color: '#f87171', whiteSpace: 'nowrap' }}>{DAILY_TASKS.CONFIRM_DELETE_TASK}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); void onDeleteTask(task.id).then(() => setConfirmDeleteId(null)) }}
+                        style={{ height: 24, padding: '0 9px', borderRadius: 7, cursor: 'pointer', background: 'rgba(220,38,38,0.18)', border: '1px solid rgba(220,38,38,0.45)', color: '#f87171', fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap' }}
+                      >
+                        {DAILY_TASKS.CONFIRM_DELETE_YES}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null) }}
+                        style={{ width: 24, height: 24, borderRadius: 7, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.1)', color: '#75798c', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEditTask(task) }}
+                        title="Edit task"
+                        style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.1)', color: '#9397ab', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .2s ease' }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(task.id) }}
+                        title="Delete task"
+                        style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.1)', color: '#9397ab', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .2s ease' }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                          <path d="M10 11v6M14 11v6" />
+                          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                        </svg>
+                      </button>
+                    </div>
+                  )
+                )}
+              </div>
+
+              {/* Check bubble */}
+              <div style={{ marginTop: 14, marginBottom: 14 }}>
                 <div
                   style={{
                     width: 22, height: 22, borderRadius: '50%',
-                    border: `1.5px solid ${done ? color : 'rgba(233,233,237,0.22)'}`,
+                    border: `1.5px ${isPartial ? 'dashed' : 'solid'} ${done || isPartial ? color : 'rgba(233,233,237,0.22)'}`,
                     background: done ? color : 'transparent',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     transition: 'all .3s ease',
@@ -266,6 +321,13 @@ export default function MobileTaskCard({
               <div style={{ fontSize: 24, fontWeight: 400, color: done ? '#75798c' : '#e9e9ed', lineHeight: 1.3, overflowWrap: 'break-word', textDecoration: done ? 'line-through' : 'none', flex: 1 }}>
                 {task.title}
               </div>
+
+              {/* Multi-completion counter */}
+              {task.targetCompletionsPerDay > 1 && (
+                <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: done ? '#595d6c' : color, marginTop: 8, lineHeight: 1, textShadow: done ? 'none' : `0 0 16px ${color}70` }}>
+                  {task.completionCount}/{task.targetCompletionsPerDay}
+                </div>
+              )}
 
               {/* Time + overdue */}
               {task.timeOfDay && (
@@ -290,7 +352,7 @@ export default function MobileTaskCard({
                     width: '100%',
                   }}
                 >
-                  {done ? DAILY_TASKS.MOBILE_UNDO_BTN : DAILY_TASKS.MOBILE_DONE_BTN}
+                  {done ? DAILY_TASKS.MOBILE_UNDO_BTN : isPartial ? DAILY_TASKS.MOBILE_TAP_AGAIN_BTN : DAILY_TASKS.MOBILE_DONE_BTN}
                 </button>
               )}
             </div>

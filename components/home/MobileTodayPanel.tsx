@@ -101,6 +101,11 @@ export default function MobileTodayPanel({ tasks, events, categoryMap, struggleS
                 <span style={{ width: 54, fontSize: 12, fontVariantNumeric: 'tabular-nums', color: '#9397ab', flexShrink: 0 }}>{ev.time}</span>
                 <span style={{ width: 3, height: 20, borderRadius: 2, background: catColor(ev.cat, categoryMap), boxShadow: `0 0 8px ${catColor(ev.cat, categoryMap)}`, flexShrink: 0 }} />
                 <span style={{ flex: 1, fontSize: 14, color: '#e9e9ed', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.title}</span>
+                {ev.type === 'task' && (ev.targetCompletionsPerDay ?? 1) > 1 && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: catColor(ev.cat, categoryMap), flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                    {ev.completionCount ?? 0}/{ev.targetCompletionsPerDay}
+                  </span>
+                )}
                 <span style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: catColor(ev.cat, categoryMap), opacity: 0.8, flexShrink: 0 }}>{ev.cat}</span>
               </div>
             ))}
@@ -115,6 +120,11 @@ export default function MobileTodayPanel({ tasks, events, categoryMap, struggleS
                     <span style={{ width: 54, fontSize: 12, fontVariantNumeric: 'tabular-nums', color: '#595d6c', flexShrink: 0 }}>{ev.time}</span>
                     <span style={{ width: 3, height: 18, borderRadius: 2, background: catColor(ev.cat, categoryMap), flexShrink: 0 }} />
                     <span style={{ flex: 1, fontSize: 13, color: '#595d6c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'line-through' }}>{ev.title}</span>
+                    {ev.type === 'task' && (ev.targetCompletionsPerDay ?? 1) > 1 && (
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#595d6c', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                        {ev.completionCount ?? 0}/{ev.targetCompletionsPerDay}
+                      </span>
+                    )}
                   </div>
                 ))}
               </>
