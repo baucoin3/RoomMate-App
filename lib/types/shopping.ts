@@ -23,3 +23,18 @@ export interface HouseholdItemSuggestion {
   name: string
   default_category_id: string | null
 }
+
+export interface CommonShoppingItem {
+  id: string
+  household_id: string
+  name: string
+  color: string
+  created_by: string
+  created_at: string
+  sort_order: number
+}
+
+export interface CreateCommonShoppingItemPayload {
+  name: string
+  color: string
+}
