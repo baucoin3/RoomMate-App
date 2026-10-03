@@ -123,58 +123,36 @@ export async function deleteExercise(
   if (error) throw new Error(error.message)
 }
 
-export async function getOrCreateSession(
+export async function createSession(
   supabase: SupabaseClient,
   householdId: string,
   routineId: string,
   userId: string,
   sessionDate: string,
 ): Promise<FitnessSessionWithCompletions> {
-  let session: FitnessSession
-
-  const { data: existing, error: fetchError } = await supabase
+  const { data, error } = await supabase
     .from('fitness_sessions')
+    .insert({ household_id: householdId, routine_id: routineId, user_id: userId, session_date: sessionDate, started_at: new Date().toISOString() })
     .select('id, household_id, routine_id, user_id, session_date, started_at, completed_at')
-    .eq('user_id', userId)
-    .eq('session_date', sessionDate)
-    .maybeSingle()
+    .single()
 
-  if (fetchError) throw new Error(fetchError.message)
+  if (error) throw new Error(error.message)
+  const session = data as FitnessSession
 
-  if (existing) {
-    session = existing as FitnessSession
-  } else {
-    const { data, error } = await supabase
-      .from('fitness_sessions')
-      .insert({ household_id: householdId, routine_id: routineId, user_id: userId, session_date: sessionDate })
-      .select('id, household_id, routine_id, user_id, session_date, started_at, completed_at')
-      .single()
-    if (error) throw new Error(error.message)
-    session = data as FitnessSession
-  }
-
-  const { data: completions, error: completionsError } = await supabase
-    .from('fitness_set_completions')
-    .select('id, session_id, exercise_id, set_number, actual_reps, actual_weight, completed_at')
-    .eq('session_id', session.id)
-
-  if (completionsError) throw new Error(completionsError.message)
-
-  return { ...session, fitness_set_completions: (completions ?? []) as FitnessSetCompletion[] }
+  return { ...session, fitness_set_completions: [] }
 }
 
 export async function getActiveSession(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<FitnessSessionWithCompletions | null> {
-  const today = new Date().toISOString().slice(0, 10)
-
   const { data, error } = await supabase
     .from('fitness_sessions')
     .select('id, household_id, routine_id, user_id, session_date, started_at, completed_at')
     .eq('user_id', userId)
-    .eq('session_date', today)
     .is('completed_at', null)
+    .order('session_date', { ascending: false })
+    .limit(1)
     .maybeSingle()
 
   if (error) throw new Error(error.message)
@@ -195,14 +173,16 @@ export async function autoCompleteStaleSession(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<boolean> {
-  const today = new Date().toISOString().slice(0, 10)
+  // Use yesterday UTC as threshold — prevents marking today's local-date session
+  // as stale when client timezone is behind UTC (e.g. EDT at 9 PM = UTC next day)
+  const safeThreshold = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
 
   const { data: stale, error: fetchError } = await supabase
     .from('fitness_sessions')
     .select('id, session_date')
     .eq('user_id', userId)
     .is('completed_at', null)
-    .lt('session_date', today)
+    .lt('session_date', safeThreshold)
     .limit(10)
 
   if (fetchError) throw new Error(fetchError.message)

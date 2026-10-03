@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { AUTH, FITNESS } from '@/locales/en'
-import { getOrCreateSession, getActiveSession, autoCompleteStaleSession } from '@/lib/services/fitness'
+import { createSession, getActiveSession, autoCompleteStaleSession } from '@/lib/services/fitness'
 import { getMemberIdForUser } from '@/lib/services/finances'
 
 export async function GET(
@@ -82,7 +82,7 @@ export async function POST(
       return NextResponse.json({ error: FITNESS.ERRORS.LOAD_SESSION }, { status: 403 })
     }
 
-    const session = await getOrCreateSession(
+    const session = await createSession(
       supabase,
       householdId,
       body.routine_id,

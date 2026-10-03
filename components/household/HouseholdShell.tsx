@@ -43,10 +43,11 @@ export default function HouseholdShell({
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true'
-  })
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
+  useEffect(() => {
+    setSidebarCollapsed(localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true')
+  }, [])
   const menuRef = useRef<HTMLDivElement>(null)
   const drawerRef = useRef<HTMLDivElement>(null)
 
