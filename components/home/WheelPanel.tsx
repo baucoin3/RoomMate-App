@@ -69,6 +69,7 @@ export default function WheelPanel({
   const [burst, setBurst] = useState<{ color: string; key: number; scale?: number } | null>(null)
   const completingRef = useRef(false)
   const [wheelToast, setWheelToast] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const wheelToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const prevNonceRef = useRef(springNonce)
@@ -308,39 +309,57 @@ export default function WheelPanel({
                   transition: 'border-color .3s ease',
                 }}
               >
-                {/* Top row: category eyebrow + edit + delete icons (always visible) */}
+                {/* Top row: category eyebrow + edit/delete icons */}
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                   <div style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: done ? '#595d6c' : color }}>
                     {capitalizeFirst(task.category)}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onEditTask(task) }}
-                      title="Edit task"
-                      style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.1)', color: '#9397ab', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .2s ease' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = '#b5abfc'; e.currentTarget.style.borderColor = 'rgba(145,132,217,0.4)' }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = '#9397ab'; e.currentTarget.style.borderColor = 'rgba(233,233,237,0.1)' }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); void onDeleteTask(task.id) }}
-                      title="Delete task"
-                      style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.1)', color: '#9397ab', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .2s ease' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = 'rgba(220,38,38,0.4)' }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = '#9397ab'; e.currentTarget.style.borderColor = 'rgba(233,233,237,0.1)' }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                        <path d="M10 11v6M14 11v6" />
-                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                      </svg>
-                    </button>
-                  </div>
+                  {confirmDeleteId === task.id ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ fontSize: 11, color: '#f87171', whiteSpace: 'nowrap' }}>{DAILY_TASKS.CONFIRM_DELETE_TASK}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); void onDeleteTask(task.id).then(() => setConfirmDeleteId(null)) }}
+                        style={{ height: 24, padding: '0 9px', borderRadius: 7, cursor: 'pointer', background: 'rgba(220,38,38,0.18)', border: '1px solid rgba(220,38,38,0.45)', color: '#f87171', fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap' }}
+                      >
+                        {DAILY_TASKS.CONFIRM_DELETE_YES}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null) }}
+                        style={{ width: 24, height: 24, borderRadius: 7, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.1)', color: '#75798c', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEditTask(task) }}
+                        title="Edit task"
+                        style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.1)', color: '#9397ab', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .2s ease' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = '#b5abfc'; e.currentTarget.style.borderColor = 'rgba(145,132,217,0.4)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = '#9397ab'; e.currentTarget.style.borderColor = 'rgba(233,233,237,0.1)' }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(task.id) }}
+                        title="Delete task"
+                        style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.1)', color: '#9397ab', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .2s ease' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = 'rgba(220,38,38,0.4)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = '#9397ab'; e.currentTarget.style.borderColor = 'rgba(233,233,237,0.1)' }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                          <path d="M10 11v6M14 11v6" />
+                          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Check circle */}

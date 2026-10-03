@@ -227,11 +227,11 @@ export default function NocturneMobile({
     if (resetting) return
     setResetting(true)
     const prevTasks = tasks
-    setTasks((prev) => prev.map((t) => ({ ...t, done: false })))
+    setTasks((prev) => prev.map((t) => ({ ...t, done: false, completionCount: 0 })))
     const liveToday = new Date().toLocaleDateString('en-CA')
     setEvents((prev) => ({
       ...prev,
-      [liveToday]: (prev[liveToday] ?? []).map((ev) => ev.type === 'task' ? { ...ev, done: false } : ev),
+      [liveToday]: (prev[liveToday] ?? []).map((ev) => ev.type === 'task' ? { ...ev, done: false, completionCount: 0 } : ev),
     }))
     soundRef.current?.playFlush()
     try {
@@ -504,6 +504,8 @@ export default function NocturneMobile({
             springIndex={springIndex}
             onComplete={handleComplete}
             onUncomplete={handleUncomplete}
+            onEditTask={(task) => setEditingTask(task)}
+            onDeleteTask={handleDeleteTask}
             onJackpot={() => setJackpot(true)}
           />
         </div>

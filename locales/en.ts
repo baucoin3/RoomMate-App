@@ -868,6 +868,8 @@ export const DAILY_TASKS = {
   SLIDE_SAVE: 'Add to wheel',
   SLIDE_SAVE_EDIT: 'Save changes',
   SLIDE_DELETE_TASK: 'Delete task',
+  CONFIRM_DELETE_TASK: 'Delete this task?',
+  CONFIRM_DELETE_YES: 'Delete',
   SCOPE_PERSONAL: 'Personal',
   SCOPE_HOUSEHOLD: 'Household',
   MANAGE_EYEBROW: 'Your tasks',
