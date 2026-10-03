@@ -91,30 +91,42 @@ export default function NocturneHome({
 
   // ── Task completion ──────────────────────────────────────────────────────────
 
-  async function handleComplete(taskId: string) {
+  async function handleComplete(taskId: string): Promise<{ isFullyDone: boolean }> {
     const task = tasks.find((t) => t.id === taskId)
-    if (!task) return
-    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
-    setEvents((prev) => ({
-      ...prev,
-      [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev),
-    }))
-    try {
-      await apiClient.post(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
-      showToast(DAILY_TASKS.TOAST_COMPLETED, categoryMap[task.category] ?? '#9184d9')
-    } catch (err) {
-      console.error('[NocturneHome.handleComplete]', err)
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
+    if (!task) return { isFullyDone: false }
+    const newCount = task.completionCount + 1
+    const isFullyDone = newCount >= task.targetCompletionsPerDay
+    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, completionCount: newCount, done: isFullyDone } : t))
+    if (isFullyDone) {
       setEvents((prev) => ({
         ...prev,
-        [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev),
+        [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev),
       }))
+    }
+    try {
+      const res = await apiClient.post<{ data: unknown; isFullyDone: boolean }>(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
+      const serverFullyDone = res.data.isFullyDone
+      if (serverFullyDone) {
+        showToast(DAILY_TASKS.TOAST_COMPLETED, categoryMap[task.category] ?? '#9184d9')
+      }
+      return { isFullyDone: serverFullyDone }
+    } catch (err) {
+      console.error('[NocturneHome.handleComplete]', err)
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, completionCount: task.completionCount, done: task.done } : t))
+      if (isFullyDone) {
+        setEvents((prev) => ({
+          ...prev,
+          [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev),
+        }))
+      }
       showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
+      return { isFullyDone: false }
     }
   }
 
   async function handleUncomplete(taskId: string) {
-    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false } : t))
+    const task = tasks.find((t) => t.id === taskId)
+    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false, completionCount: 0 } : t))
     setEvents((prev) => ({
       ...prev,
       [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false } : ev),
@@ -123,7 +135,7 @@ export default function NocturneHome({
       await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete`)
     } catch (err) {
       console.error('[NocturneHome.handleUncomplete]', err)
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true } : t))
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: task?.done ?? true, completionCount: task?.completionCount ?? 1 } : t))
       setEvents((prev) => ({
         ...prev,
         [todayISO]: (prev[todayISO] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true } : ev),
@@ -168,7 +180,7 @@ export default function NocturneHome({
     if (resetting) return
     setResetting(true)
     const prevTasks = tasks
-    setTasks((prev) => prev.map((t) => ({ ...t, done: false })))
+    setTasks((prev) => prev.map((t) => ({ ...t, done: false, completionCount: 0 })))
     const liveToday = new Date().toLocaleDateString('en-CA')
     setEvents((prev) => ({
       ...prev,
@@ -198,6 +210,8 @@ export default function NocturneHome({
         timeOfDay: draft.time || null,
         logsToCalendar: draft.logsToCalendar,
         scope: draft.scope,
+        targetCompletionsPerDay: draft.targetCompletionsPerDay,
+        weeklyTarget: draft.weeklyTarget,
       })
       const newTask = res.data.data
       const next = sortTasks([...tasks, newTask])
@@ -224,6 +238,8 @@ export default function NocturneHome({
       timeOfDay: draft.time || null,
       logsToCalendar: draft.logsToCalendar,
       scope: draft.scope,
+      targetCompletionsPerDay: draft.targetCompletionsPerDay,
+      weeklyTarget: draft.weeklyTarget,
     })
     const updated = res.data.data
     setTasks((prev) => sortTasks(prev.map((t) => t.id === taskId ? updated : t)))
@@ -417,7 +433,20 @@ export default function NocturneHome({
       <div style={{ flex: 1, position: 'relative', padding: '20px 32px 0', overflow: 'hidden' }}>
         {/* Today */}
         <div style={{ position: 'absolute', inset: '20px 32px 0', opacity: tab === 'today' ? 1 : 0, transform: tab === 'today' ? 'translateY(0) scale(1)' : 'translateY(16px) scale(0.985)', pointerEvents: tab === 'today' ? 'auto' : 'none', transition: 'opacity .45s ease, transform .55s cubic-bezier(.2,.8,.2,1)' }}>
-          <TodayPanel tasks={tasks} events={todayEvents} weeklyRate={weeklyRate} categoryMap={categoryMap} now={now} struggleStats={struggleStats} />
+          <TodayPanel
+            tasks={tasks}
+            events={todayEvents}
+            weeklyRate={weeklyRate}
+            categoryMap={categoryMap}
+            now={now}
+            struggleStats={struggleStats}
+            onEditTask={(taskId) => {
+              const task = tasks.find((t) => t.id === taskId)
+              if (!task) return
+              soundRef.current?.playOpenPanel()
+              setEditingTask(task)
+            }}
+          />
         </div>
 
         {/* Calendar */}
@@ -448,6 +477,7 @@ export default function NocturneHome({
             springIndex={springIndex}
             onComplete={handleComplete}
             onUncomplete={handleUncomplete}
+            onEditTask={(task) => { soundRef.current?.playOpenPanel(); setEditingTask(task) }}
             onJackpot={() => setJackpot(true)}
             todayEvents={todayEvents}
           />

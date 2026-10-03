@@ -208,7 +208,7 @@ If a handler exceeds ~50 lines of logic, extract it into `lib/services/`.
 
 **Supabase Project ID:** `inbexkcbkoilfpuwctkx` — **Authoritative reference:** [`.cursor/rules/database-schema.mdc`](.cursor/rules/database-schema.mdc) (tables, RLS policies, functions, storage, FK map, service ownership).
 
-**Summary:** 31 `public` tables — **15 with RLS**, **16 without** (finances, recipes, shopping stacks, fitness). Domains: guests/groups, recurring bills + payment reports, receipts + line items, meal logs, calendar events, recipe tags, household item catalog, **daily tasks + completions + dynamic categories** (added 2026-09-03), **fitness routines + exercises + sessions + set completions** (added 2026-10-03).
+**Summary:** 31 `public` tables — **15 with RLS**, **16 without** (finances, recipes, shopping stacks, fitness). Domains: guests/groups, recurring bills + payment reports, receipts + line items, meal logs, calendar events, recipe tags, household item catalog, **daily tasks + completions + dynamic categories** (added 2026-09-03; `daily_tasks` gained `target_completions_per_day`/`weekly_target`; `daily_task_completions` gained `completion_index` for multi-tap tasks — 2026-10-03), **fitness routines + exercises + sessions + set completions** (added 2026-10-03).
 
 Do not duplicate the schema here; update `database-schema.mdc` when the database changes.
 

@@ -61,7 +61,7 @@ export async function getDailyTasks(
 
     const tasksResult = await supabase
       .from('daily_tasks')
-      .select('id, household_id, title, category, time_of_day, logs_to_calendar, created_by, created_at, scope')
+      .select('id, household_id, title, category, time_of_day, logs_to_calendar, created_by, created_at, scope, target_completions_per_day, weekly_target')
       .eq('household_id', householdId)
       .or(`scope.eq.household,and(scope.eq.personal,created_by.eq.${userId})`)
       .order('time_of_day', { ascending: true, nullsFirst: false })
@@ -78,22 +78,32 @@ export async function getDailyTasks(
           .eq('completed_on', today)
       : { data: [], error: null }
 
-    const completedTodayIds = new Set(
-      (completionsResult.data ?? []).map((c) => c.task_id as string),
-    )
+    // Count completions per task for today
+    const completionCountMap = new Map<string, number>()
+    for (const c of (completionsResult.data ?? [])) {
+      const id = c.task_id as string
+      completionCountMap.set(id, (completionCountMap.get(id) ?? 0) + 1)
+    }
 
-    const tasks: DailyTask[] = (tasksResult.data ?? []).map((t) => ({
-      id: t.id as string,
-      householdId: t.household_id as string,
-      title: t.title as string,
-      category: t.category as TaskCategory,
-      timeOfDay: (t.time_of_day as string | null) ?? null,
-      logsToCalendar: t.logs_to_calendar as boolean,
-      createdBy: t.created_by as string,
-      createdAt: t.created_at as string,
-      done: completedTodayIds.has(t.id as string),
-      scope: (t.scope as TaskScope) ?? 'personal',
-    }))
+    const tasks: DailyTask[] = (tasksResult.data ?? []).map((t) => {
+      const target = (t.target_completions_per_day as number) ?? 1
+      const count = completionCountMap.get(t.id as string) ?? 0
+      return {
+        id: t.id as string,
+        householdId: t.household_id as string,
+        title: t.title as string,
+        category: t.category as TaskCategory,
+        timeOfDay: (t.time_of_day as string | null) ?? null,
+        logsToCalendar: t.logs_to_calendar as boolean,
+        createdBy: t.created_by as string,
+        createdAt: t.created_at as string,
+        done: count >= target,
+        scope: (t.scope as TaskScope) ?? 'personal',
+        targetCompletionsPerDay: target,
+        weeklyTarget: (t.weekly_target as number) ?? 7,
+        completionCount: count,
+      }
+    })
 
     return { data: tasks, error: null }
   } catch (err) {
@@ -211,8 +221,10 @@ export async function createDailyTask(
         logs_to_calendar: payload.logsToCalendar,
         created_by: userId,
         scope: payload.scope,
+        target_completions_per_day: payload.targetCompletionsPerDay,
+        weekly_target: payload.weeklyTarget,
       })
-      .select('id, household_id, title, category, time_of_day, logs_to_calendar, created_by, created_at, scope')
+      .select('id, household_id, title, category, time_of_day, logs_to_calendar, created_by, created_at, scope, target_completions_per_day, weekly_target')
       .single()
 
     if (error) return { data: null, error: error.message }
@@ -229,6 +241,9 @@ export async function createDailyTask(
         createdAt: data.created_at as string,
         done: false,
         scope: (data.scope as TaskScope) ?? 'personal',
+        targetCompletionsPerDay: (data.target_completions_per_day as number) ?? 1,
+        weeklyTarget: (data.weekly_target as number) ?? 7,
+        completionCount: 0,
       },
       error: null,
     }
@@ -243,18 +258,45 @@ export async function completeDailyTask(
   taskId: string,
   userId: string,
   date: string,
-): Promise<{ data: DailyTaskCompletion | null; error: string | null }> {
+): Promise<{ data: DailyTaskCompletion | null; isFullyDone: boolean; error: string | null }> {
   try {
+    // Fetch target for this task
+    const { data: taskRow, error: taskErr } = await supabase
+      .from('daily_tasks')
+      .select('target_completions_per_day')
+      .eq('id', taskId)
+      .single()
+
+    if (taskErr) return { data: null, isFullyDone: false, error: taskErr.message }
+
+    const target = (taskRow.target_completions_per_day as number) ?? 1
+
+    // Count existing completions for this task today
+    const { data: existing, error: countErr } = await supabase
+      .from('daily_task_completions')
+      .select('completion_index')
+      .eq('task_id', taskId)
+      .eq('completed_on', date)
+
+    if (countErr) return { data: null, isFullyDone: false, error: countErr.message }
+
+    const currentCount = (existing ?? []).length
+
+    if (currentCount >= target) {
+      return { data: null, isFullyDone: true, error: null }
+    }
+
+    const nextIndex = currentCount + 1
+
     const { data, error } = await supabase
       .from('daily_task_completions')
-      .upsert(
-        { task_id: taskId, completed_on: date, completed_by: userId },
-        { onConflict: 'task_id,completed_on' },
-      )
+      .insert({ task_id: taskId, completed_on: date, completed_by: userId, completion_index: nextIndex })
       .select('id, task_id, completed_on, completed_by')
       .single()
 
-    if (error) return { data: null, error: error.message }
+    if (error) return { data: null, isFullyDone: false, error: error.message }
+
+    const isFullyDone = nextIndex >= target
 
     return {
       data: {
@@ -263,11 +305,12 @@ export async function completeDailyTask(
         completedOn: data.completed_on as string,
         completedBy: data.completed_by as string,
       },
+      isFullyDone,
       error: null,
     }
   } catch (err) {
     console.error('[dailyTasks/completeDailyTask]', err)
-    return { data: null, error: 'Failed to complete task.' }
+    return { data: null, isFullyDone: false, error: 'Failed to complete task.' }
   }
 }
 
@@ -355,24 +398,28 @@ export async function updateDailyTask(
     if (payload.timeOfDay !== undefined) updates.time_of_day = payload.timeOfDay
     if (payload.logsToCalendar !== undefined) updates.logs_to_calendar = payload.logsToCalendar
     if (payload.scope !== undefined) updates.scope = payload.scope
+    if (payload.targetCompletionsPerDay !== undefined) updates.target_completions_per_day = payload.targetCompletionsPerDay
+    if (payload.weeklyTarget !== undefined) updates.weekly_target = payload.weeklyTarget
 
     const { data, error } = await supabase
       .from('daily_tasks')
       .update(updates)
       .eq('id', taskId)
       .eq('household_id', householdId)
-      .select('id, household_id, title, category, time_of_day, logs_to_calendar, created_by, created_at, scope')
+      .select('id, household_id, title, category, time_of_day, logs_to_calendar, created_by, created_at, scope, target_completions_per_day, weekly_target')
       .single()
 
     if (error) return { data: null, error: error.message }
 
     const today = getCurrentPeriodDate()
-    const { data: comp } = await supabase
+    const { data: comps } = await supabase
       .from('daily_task_completions')
-      .select('task_id')
+      .select('id')
       .eq('task_id', taskId)
       .eq('completed_on', today)
-      .maybeSingle()
+
+    const target = (data.target_completions_per_day as number) ?? 1
+    const count = (comps ?? []).length
 
     return {
       data: {
@@ -384,8 +431,11 @@ export async function updateDailyTask(
         logsToCalendar: data.logs_to_calendar as boolean,
         createdBy: data.created_by as string,
         createdAt: data.created_at as string,
-        done: comp !== null,
+        done: count >= target,
         scope: (data.scope as TaskScope) ?? 'personal',
+        targetCompletionsPerDay: target,
+        weeklyTarget: (data.weekly_target as number) ?? 7,
+        completionCount: count,
       },
       error: null,
     }
@@ -604,7 +654,7 @@ export async function getTaskStruggleStats(
 
     const { data: taskRows, error: tasksError } = await supabase
       .from('daily_tasks')
-      .select('id, title, category')
+      .select('id, title, category, weekly_target')
       .eq('household_id', householdId)
       .or(`scope.eq.household,and(scope.eq.personal,created_by.eq.${userId})`)
 
@@ -632,12 +682,13 @@ export async function getTaskStruggleStats(
     const stats: TaskStruggleStat[] = taskRows
       .map((t) => {
         const daysCompleted = taskDayMap.get(t.id as string)?.size ?? 0
+        const weeklyTarget = (t.weekly_target as number) ?? 7
         return {
           taskId: t.id as string,
           title: t.title as string,
           category: t.category as string,
           daysCompleted,
-          isStruggling: daysCompleted < 4,
+          isStruggling: daysCompleted < weeklyTarget,
         }
       })
       .sort((a, b) => a.daysCompleted - b.daysCompleted)

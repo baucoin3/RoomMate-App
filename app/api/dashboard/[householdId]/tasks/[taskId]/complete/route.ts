@@ -38,10 +38,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       if (body.date && /^\d{4}-\d{2}-\d{2}$/.test(body.date)) date = body.date
     } catch { /* no body is fine */ }
 
-    const { data, error } = await completeDailyTask(supabase, params.taskId, user.id, date)
+    const { data, isFullyDone, error } = await completeDailyTask(supabase, params.taskId, user.id, date)
     if (error) return NextResponse.json({ error }, { status: 400 })
 
-    return NextResponse.json({ data }, { status: 201 })
+    return NextResponse.json({ data, isFullyDone }, { status: 201 })
   } catch (err) {
     console.error('[tasks/complete/POST]', err)
     return NextResponse.json({ error: ERRORS.INTERNAL }, { status: 500 })

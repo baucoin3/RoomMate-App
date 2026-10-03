@@ -10,8 +10,11 @@ export interface DailyTask {
   logsToCalendar: boolean
   createdBy: string
   createdAt: string
-  done: boolean             // derived: completion exists for current period
+  done: boolean             // derived: completionCount >= targetCompletionsPerDay
   scope: TaskScope
+  targetCompletionsPerDay: number  // how many times this task must be completed per day
+  weeklyTarget: number             // how many days per week this task should be completed
+  completionCount: number          // how many times completed today
 }
 
 export interface DailyTaskCompletion {
@@ -27,6 +30,8 @@ export interface CreateDailyTaskPayload {
   timeOfDay: string | null  // "HH:MM:SS" or null
   logsToCalendar: boolean
   scope: TaskScope
+  targetCompletionsPerDay: number
+  weeklyTarget: number
 }
 
 export interface UpdateDailyTaskPayload {
@@ -35,6 +40,8 @@ export interface UpdateDailyTaskPayload {
   timeOfDay?: string | null
   logsToCalendar?: boolean
   scope?: TaskScope
+  targetCompletionsPerDay?: number
+  weeklyTarget?: number
 }
 
 export interface NocturneCalendarEvent {
@@ -60,5 +67,5 @@ export interface TaskStruggleStat {
   title: string
   category: string
   daysCompleted: number   // 0–7 (last 7 days)
-  isStruggling: boolean   // daysCompleted < 4
+  isStruggling: boolean   // daysCompleted < task.weeklyTarget
 }

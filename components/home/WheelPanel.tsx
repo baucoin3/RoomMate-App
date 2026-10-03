@@ -48,15 +48,16 @@ interface WheelPanelProps {
   soundRef: { current: SoundEngine | null }
   springNonce: number
   springIndex: number
-  onComplete: (taskId: string) => Promise<void>
+  onComplete: (taskId: string) => Promise<{ isFullyDone: boolean }>
   onUncomplete: (taskId: string) => Promise<void>
+  onEditTask: (task: DailyTask) => void
   todayEvents: NocturneCalendarEvent[]
   onJackpot?: () => void
 }
 
 export default function WheelPanel({
   tasks, now, isActive, categoryMap, soundRef,
-  springNonce, springIndex, onComplete, onUncomplete, onJackpot, todayEvents,
+  springNonce, springIndex, onComplete, onUncomplete, onEditTask, onJackpot, todayEvents,
 }: WheelPanelProps) {
   const nowMins = now.getHours() * 60 + now.getMinutes()
   const posRef = useRef(0)
@@ -66,6 +67,8 @@ export default function WheelPanel({
   const lastDetentRef = useRef(0)
   const [burst, setBurst] = useState<{ color: string; key: number } | null>(null)
   const completingRef = useRef(false)
+  const [wheelToast, setWheelToast] = useState<string | null>(null)
+  const wheelToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const prevNonceRef = useRef(springNonce)
   useEffect(() => {
@@ -162,8 +165,10 @@ export default function WheelPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, tasks.length])
 
-  function isTaskDone(taskId: string): boolean {
-    return todayEvents.some((e) => e.taskId === taskId && e.done === true)
+  function showWheelToast(msg: string) {
+    if (wheelToastTimerRef.current) clearTimeout(wheelToastTimerRef.current)
+    setWheelToast(msg)
+    wheelToastTimerRef.current = setTimeout(() => setWheelToast(null), 2400)
   }
 
   async function handleCardClick(task: DailyTask, cardIndex: number) {
@@ -171,17 +176,21 @@ export default function WheelPanel({
     if (completingRef.current) return
     completingRef.current = true
     soundRef.current?.playTap()
-    const done = isTaskDone(task.id)
     try {
-      if (done) {
+      if (task.done) {
         await onUncomplete(task.id)
       } else {
-        await onComplete(task.id)
+        const { isFullyDone } = await onComplete(task.id)
         soundRef.current?.playComplete()
-        const color = catColor(task.category, categoryMap)
-        setBurst({ color, key: Date.now() })
-        if (onJackpot && Math.random() < 0.15) {
-          onJackpot()
+        if (isFullyDone) {
+          const color = catColor(task.category, categoryMap)
+          setBurst({ color, key: Date.now() })
+          if (onJackpot && Math.random() < 0.15) {
+            onJackpot()
+          }
+        } else {
+          const newCount = task.completionCount + 1
+          showWheelToast(DAILY_TASKS.TOAST_PARTIAL(newCount, task.targetCompletionsPerDay))
         }
       }
     } finally {
@@ -254,8 +263,9 @@ export default function WheelPanel({
             const zIdx = 200 - Math.round(Math.abs(o) * 20)
             const color = catColor(task.category, categoryMap)
             const taskMins = task.timeOfDay ? timeOfDayToMins(task.timeOfDay) : null
-            const done = isTaskDone(task.id)
+            const done = task.done
             const isOverdue = taskMins !== null && nowMins > taskMins && !done
+            const isCenter = Math.abs(o) < 0.35
 
             return (
               <div
@@ -286,9 +296,32 @@ export default function WheelPanel({
                   transition: 'border-color .3s ease',
                 }}
               >
-                {/* Category eyebrow */}
-                <div style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: done ? '#595d6c' : color }}>
-                  {capitalizeFirst(task.category)}
+                {/* Top row: category eyebrow + edit icon (non-center) + progress (multi-tap) */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: done ? '#595d6c' : color }}>
+                    {capitalizeFirst(task.category)}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {task.targetCompletionsPerDay > 1 && (
+                      <span style={{ fontSize: 10, color: done ? '#595d6c' : '#9397ab', fontVariantNumeric: 'tabular-nums' }}>
+                        {task.completionCount}/{task.targetCompletionsPerDay}
+                      </span>
+                    )}
+                    {!isCenter && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEditTask(task) }}
+                        title="Edit task"
+                        style={{ width: 22, height: 22, borderRadius: 6, cursor: 'pointer', background: 'transparent', border: 'none', color: '#9397ab', opacity: 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'opacity .2s ease' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.4' }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Check circle */}
@@ -352,6 +385,13 @@ export default function WheelPanel({
               />
             )
           })}
+        </div>
+      )}
+
+      {/* Partial completion toast */}
+      {wheelToast && (
+        <div style={{ position: 'absolute', bottom: 60, left: '50%', transform: 'translateX(-50%)', background: 'rgba(22,24,38,0.96)', border: '1px solid rgba(145,132,217,0.4)', borderRadius: 24, padding: '8px 18px', fontSize: 13, color: '#e9e9ed', whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 10 }}>
+          {wheelToast}
         </div>
       )}
     </div>

@@ -66,6 +66,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       timeOfDay?: unknown
       logsToCalendar?: unknown
       scope?: unknown
+      targetCompletionsPerDay?: unknown
+      weeklyTarget?: unknown
     }
 
     const title = typeof body.title === 'string' ? body.title.trim() : ''
@@ -75,6 +77,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const scope = typeof body.scope === 'string' && VALID_SCOPES.includes(body.scope as TaskScope)
       ? (body.scope as TaskScope)
       : 'personal'
+    const targetCompletionsPerDay = typeof body.targetCompletionsPerDay === 'number' && body.targetCompletionsPerDay >= 1
+      ? Math.floor(body.targetCompletionsPerDay)
+      : 1
+    const weeklyTarget = typeof body.weeklyTarget === 'number' && body.weeklyTarget >= 1 && body.weeklyTarget <= 7
+      ? Math.floor(body.weeklyTarget)
+      : 7
 
     if (!title) {
       return NextResponse.json({ error: DAILY_TASKS.ERRORS.TITLE_REQUIRED }, { status: 400 })
@@ -116,6 +124,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       timeOfDay,
       logsToCalendar,
       scope,
+      targetCompletionsPerDay,
+      weeklyTarget,
     }
 
     const { data, error } = await createDailyTask(supabase, params.householdId, user.id, payload)

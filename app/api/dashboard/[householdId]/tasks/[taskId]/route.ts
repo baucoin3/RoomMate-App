@@ -39,6 +39,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       timeOfDay?: unknown
       logsToCalendar?: unknown
       scope?: unknown
+      targetCompletionsPerDay?: unknown
+      weeklyTarget?: unknown
     }
 
     const payload: Record<string, unknown> = {}
@@ -51,7 +53,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     if (typeof body.category === 'string') {
       const category = body.category.trim()
-      // Validate against household's actual categories
       const { count } = await supabase
         .from('task_categories')
         .select('id', { count: 'exact', head: true })
@@ -85,6 +86,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     if (typeof body.scope === 'string' && VALID_SCOPES.includes(body.scope as TaskScope)) {
       payload.scope = body.scope as TaskScope
+    }
+
+    if (typeof body.targetCompletionsPerDay === 'number' && body.targetCompletionsPerDay >= 1) {
+      payload.targetCompletionsPerDay = Math.floor(body.targetCompletionsPerDay)
+    }
+
+    if (typeof body.weeklyTarget === 'number' && body.weeklyTarget >= 1 && body.weeklyTarget <= 7) {
+      payload.weeklyTarget = Math.floor(body.weeklyTarget)
     }
 
     const { data, error } = await updateDailyTask(

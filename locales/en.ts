@@ -909,6 +909,13 @@ export const DAILY_TASKS = {
   MEAL_CAL_PREFIX: 'Made: ',
   TOAST_CALENDAR_DONE: 'Marked done',
   TOAST_CALENDAR_UNDONE: 'Unmarked',
+  TOAST_PARTIAL: (current: number, target: number) => `${current} of ${target} done`,
+  SLIDE_TASK_TYPE_LABEL: 'Frequency',
+  SLIDE_TASK_TYPE_ONCE: 'Once per day',
+  SLIDE_TASK_TYPE_MULTI: 'Multiple times per day',
+  SLIDE_DAILY_TARGET_LABEL: 'Times per day',
+  SLIDE_WEEKLY_TARGET_LABEL: 'Weekly goal',
+  SLIDE_WEEKLY_TARGET_HINT: (n: number) => `Complete at least ${n} day${n === 1 ? '' : 's'} per week`,
   ERRORS: {
     TITLE_REQUIRED: 'Task title is required.',
     CATEGORY_REQUIRED: 'Category is required.',

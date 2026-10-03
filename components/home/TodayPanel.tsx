@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import type { DailyTask, NocturneCalendarEvent, WeeklyRate, TaskStruggleStat } from '@/lib/types/dailyTasks'
 import { DAILY_TASKS } from '@/locales/en'
 
@@ -22,6 +23,7 @@ interface TodayPanelProps {
   categoryMap: Record<string, string>
   now: Date
   struggleStats: TaskStruggleStat[]
+  onEditTask: (taskId: string) => void
 }
 
 const FADED_RULE: React.CSSProperties = {
@@ -30,8 +32,19 @@ const FADED_RULE: React.CSSProperties = {
   margin: '12px 0',
 }
 
-export default function TodayPanel({ tasks, events, categoryMap, now, struggleStats }: TodayPanelProps) {
+function EditIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  )
+}
+
+export default function TodayPanel({ tasks, events, categoryMap, now, struggleStats, onEditTask }: TodayPanelProps) {
   void now
+
+  const [hoveredRow, setHoveredRow] = useState<number | null>(null)
 
   const doneCount = tasks.filter((t) => t.done).length
   const totalCount = tasks.length
@@ -88,9 +101,12 @@ export default function TodayPanel({ tasks, events, categoryMap, now, struggleSt
           ) : (
             todoItems.map((ev, i) => {
               const color = catColor(ev.cat, categoryMap)
+              const isHovered = hoveredRow === i
               return (
                 <div
                   key={i}
+                  onMouseEnter={() => setHoveredRow(i)}
+                  onMouseLeave={() => setHoveredRow(null)}
                   style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '11px 0', borderBottom: '1px solid rgba(233,233,237,0.04)' }}
                 >
                   <span style={{ width: 66, fontSize: 13, fontVariantNumeric: 'tabular-nums', color: '#9397ab', flexShrink: 0 }}>
@@ -101,6 +117,15 @@ export default function TodayPanel({ tasks, events, categoryMap, now, struggleSt
                   <span style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color, opacity: 0.85 }}>
                     {ev.cat}
                   </span>
+                  {ev.type === 'task' && ev.taskId && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onEditTask(ev.taskId!) }}
+                      title="Edit task"
+                      style={{ width: 24, height: 24, borderRadius: 6, cursor: 'pointer', background: 'transparent', border: 'none', color: '#9397ab', opacity: isHovered ? 0.8 : 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'opacity .2s ease', flexShrink: 0 }}
+                    >
+                      <EditIcon />
+                    </button>
+                  )}
                 </div>
               )
             })
@@ -115,9 +140,13 @@ export default function TodayPanel({ tasks, events, categoryMap, now, struggleSt
               </div>
               {completedItems.map((ev, i) => {
                 const color = catColor(ev.cat, categoryMap)
+                const rowKey = todoItems.length + i
+                const isHovered = hoveredRow === rowKey
                 return (
                   <div
                     key={i}
+                    onMouseEnter={() => setHoveredRow(rowKey)}
+                    onMouseLeave={() => setHoveredRow(null)}
                     style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '10px 0', borderBottom: '1px solid rgba(233,233,237,0.04)', opacity: 0.4 }}
                   >
                     <span style={{ width: 66, fontSize: 13, fontVariantNumeric: 'tabular-nums', color: '#595d6c', flexShrink: 0 }}>
@@ -128,6 +157,15 @@ export default function TodayPanel({ tasks, events, categoryMap, now, struggleSt
                     <span style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#595d6c' }}>
                       {ev.cat}
                     </span>
+                    {ev.type === 'task' && ev.taskId && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEditTask(ev.taskId!) }}
+                        title="Edit task"
+                        style={{ width: 24, height: 24, borderRadius: 6, cursor: 'pointer', background: 'transparent', border: 'none', color: '#9397ab', opacity: isHovered ? 0.8 : 0.3, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'opacity .2s ease', flexShrink: 0 }}
+                      >
+                        <EditIcon />
+                      </button>
+                    )}
                   </div>
                 )
               })}
