@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
-import type { DailyTask, NocturneCalendarEvent } from '@/lib/types/dailyTasks'
+import type { DailyTask } from '@/lib/types/dailyTasks'
 import type { SoundEngine } from './SoundEngine'
 import BurstAnimation from './BurstAnimation'
 import { DAILY_TASKS } from '@/locales/en'
@@ -44,12 +44,11 @@ interface MobileTaskCardProps {
   springIndex: number
   onComplete: (taskId: string) => Promise<void>
   onUncomplete: (taskId: string) => Promise<void>
-  todayEvents: NocturneCalendarEvent[]
   onJackpot?: () => void
 }
 
 export default function MobileTaskCard({
-  tasks, now, categoryMap, soundRef, springNonce, springIndex, onComplete, onUncomplete, onJackpot, todayEvents,
+  tasks, now, categoryMap, soundRef, springNonce, springIndex, onComplete, onUncomplete, onJackpot,
 }: MobileTaskCardProps) {
   const nowMins = now.getHours() * 60 + now.getMinutes()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -129,23 +128,21 @@ export default function MobileTaskCard({
     startSpring()
   }
 
-  function isTaskDone(taskId: string): boolean {
-    return todayEvents.some((e) => e.taskId === taskId && e.done === true)
-  }
-
   async function handleCompleteCard(task: DailyTask) {
     if (completingRef.current) return
     completingRef.current = true
     soundRef.current?.playTap()
-    const done = isTaskDone(task.id)
     try {
-      if (done) {
+      if (task.done) {
         await onUncomplete(task.id)
       } else {
         await onComplete(task.id)
-        soundRef.current?.playComplete()
-        setBurst({ color: catColor(task.category, categoryMap), key: Date.now() })
-        if (onJackpot && Math.random() < 0.15) onJackpot()
+        const willBeFullyDone = task.completionCount + 1 >= task.targetCompletionsPerDay
+        if (willBeFullyDone) {
+          soundRef.current?.playComplete()
+          setBurst({ color: catColor(task.category, categoryMap), key: Date.now() })
+          if (onJackpot && Math.random() < 0.15) onJackpot()
+        }
       }
     } finally {
       completingRef.current = false
@@ -202,7 +199,8 @@ export default function MobileTaskCard({
           const isCentre = Math.abs(o) < 0.35
           const color = catColor(task.category, categoryMap)
           const taskMins = task.timeOfDay ? timeToMins(task.timeOfDay) : null
-          const done = isTaskDone(task.id)
+          const done = task.done
+          const isPartial = task.completionCount > 0 && !done
           const isOverdue = taskMins !== null && nowMins > taskMins && !done
           const zIdx = 10 - Math.round(Math.abs(o) * 2)
 
@@ -248,7 +246,7 @@ export default function MobileTaskCard({
                 <div
                   style={{
                     width: 22, height: 22, borderRadius: '50%',
-                    border: `1.5px solid ${done ? color : 'rgba(233,233,237,0.22)'}`,
+                    border: `1.5px ${isPartial ? 'dashed' : 'solid'} ${done || isPartial ? color : 'rgba(233,233,237,0.22)'}`,
                     background: done ? color : 'transparent',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     transition: 'all .3s ease',
@@ -266,6 +264,13 @@ export default function MobileTaskCard({
               <div style={{ fontSize: 24, fontWeight: 400, color: done ? '#75798c' : '#e9e9ed', lineHeight: 1.3, overflowWrap: 'break-word', textDecoration: done ? 'line-through' : 'none', flex: 1 }}>
                 {task.title}
               </div>
+
+              {/* Multi-completion counter */}
+              {task.targetCompletionsPerDay > 1 && (
+                <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: done ? '#595d6c' : color, marginTop: 8, lineHeight: 1, textShadow: done ? 'none' : `0 0 16px ${color}70` }}>
+                  {task.completionCount}/{task.targetCompletionsPerDay}
+                </div>
+              )}
 
               {/* Time + overdue */}
               {task.timeOfDay && (
@@ -290,7 +295,7 @@ export default function MobileTaskCard({
                     width: '100%',
                   }}
                 >
-                  {done ? DAILY_TASKS.MOBILE_UNDO_BTN : DAILY_TASKS.MOBILE_DONE_BTN}
+                  {done ? DAILY_TASKS.MOBILE_UNDO_BTN : isPartial ? DAILY_TASKS.MOBILE_TAP_AGAIN_BTN : DAILY_TASKS.MOBILE_DONE_BTN}
                 </button>
               )}
             </div>

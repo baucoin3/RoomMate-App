@@ -53,6 +53,8 @@ export interface NocturneCalendarEvent {
   taskId?: string    // type='task'
   eventId?: string   // type='event'
   mealLogId?: string // type='meal'
+  completionCount?: number          // type='task' multi-tap: how many times done on this date
+  targetCompletionsPerDay?: number  // type='task' multi-tap: required count for full done
 }
 
 export type NocturneCalendarData = Record<string, NocturneCalendarEvent[]>

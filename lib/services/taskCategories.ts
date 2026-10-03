@@ -92,13 +92,55 @@ export async function createTaskCategory(
   }
 }
 
+export async function updateTaskCategory(
+  supabase: SupabaseClient,
+  householdId: string,
+  categoryId: string,
+  payload: { name?: string; color?: string },
+): Promise<{ data: TaskCategoryRecord | null; error: string | null }> {
+  try {
+    const updates: Record<string, unknown> = {}
+    if (payload.name !== undefined) updates.name = payload.name.trim()
+    if (payload.color !== undefined) updates.color = payload.color
+
+    const { error: updateError } = await supabase
+      .from('task_categories')
+      .update(updates)
+      .eq('id', categoryId)
+      .eq('household_id', householdId)
+
+    if (updateError) return { data: null, error: updateError.message }
+
+    const { data, error: fetchError } = await supabase
+      .from('task_categories')
+      .select('id, household_id, name, color, created_at')
+      .eq('id', categoryId)
+      .single()
+
+    if (fetchError || !data) return { data: null, error: fetchError?.message ?? 'Category not found.' }
+
+    return {
+      data: {
+        id: data.id as string,
+        householdId: data.household_id as string,
+        name: data.name as string,
+        color: data.color as string,
+        createdAt: data.created_at as string,
+      },
+      error: null,
+    }
+  } catch (err) {
+    console.error('[taskCategories/updateTaskCategory]', err)
+    return { data: null, error: 'Failed to update category.' }
+  }
+}
+
 export async function deleteTaskCategory(
   supabase: SupabaseClient,
   householdId: string,
   categoryId: string,
-): Promise<{ error: string | null; inUse?: boolean }> {
+): Promise<{ error: string | null; inUse?: boolean; taskTitles?: string[] }> {
   try {
-    // Find the category name first
     const { data: cat, error: fetchError } = await supabase
       .from('task_categories')
       .select('name')
@@ -108,15 +150,17 @@ export async function deleteTaskCategory(
 
     if (fetchError || !cat) return { error: 'Category not found.' }
 
-    // Block deletion if any tasks still use this category name
-    const { count, error: countError } = await supabase
+    const { data: usingTasks, error: countError } = await supabase
       .from('daily_tasks')
-      .select('id', { count: 'exact', head: true })
+      .select('title')
       .eq('household_id', householdId)
       .eq('category', cat.name as string)
 
     if (countError) return { error: countError.message }
-    if ((count ?? 0) > 0) return { error: 'in_use', inUse: true }
+    if ((usingTasks ?? []).length > 0) {
+      const taskTitles = (usingTasks ?? []).map((t) => t.title as string)
+      return { error: 'in_use', inUse: true, taskTitles }
+    }
 
     const { error } = await supabase
       .from('task_categories')

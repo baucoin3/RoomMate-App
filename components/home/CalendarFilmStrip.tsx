@@ -203,19 +203,22 @@ export default function CalendarFilmStrip({
 
                       // ── Task row ──────────────────────────────────────────────
                       if (ev.type === 'task') {
+                        const target = ev.targetCompletionsPerDay ?? 1
+                        const count = ev.completionCount ?? (ev.done ? target : 0)
+                        const partial = count > 0 && !ev.done
                         return (
                           <div
                             key={i}
                             style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderBottom: '1px solid rgba(233,233,237,0.04)', opacity: ev.done ? 0.55 : 1, transition: 'opacity .25s ease' }}
                           >
                             <span style={{ width: 66, fontSize: 13, fontVariantNumeric: 'tabular-nums', color: '#9397ab', flexShrink: 0 }}>{ev.time}</span>
-                            {/* Checkbox bubble */}
+                            {/* Checkbox bubble — partial = dashed border + color tint */}
                             <div
                               onClick={() => ev.taskId && onTaskToggled?.(ev.taskId, iso, !!ev.done)}
                               style={{
                                 width: 18, height: 18, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
-                                border: `1.5px solid ${ev.done ? color : 'rgba(233,233,237,0.3)'}`,
-                                background: ev.done ? color : 'transparent',
+                                border: `1.5px ${partial ? 'dashed' : 'solid'} ${(ev.done || partial) ? color : 'rgba(233,233,237,0.3)'}`,
+                                background: ev.done ? color : partial ? `${color}30` : 'transparent',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 transition: 'all .2s ease',
                               }}
@@ -227,6 +230,9 @@ export default function CalendarFilmStrip({
                               )}
                             </div>
                             <span style={{ flex: 1, fontSize: 14, color: ev.done ? '#595d6c' : '#e9e9ed', textDecoration: ev.done ? 'line-through' : 'none', transition: 'all .25s ease' }}>{ev.title}</span>
+                            {target > 1 && (
+                              <span style={{ fontSize: 12, fontWeight: 600, color: ev.done ? '#595d6c' : color, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{count}/{target}</span>
+                            )}
                             <span style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color, opacity: 0.85, flexShrink: 0 }}>{ev.cat}</span>
                             {ev.taskId && onEditTask && (
                               <button

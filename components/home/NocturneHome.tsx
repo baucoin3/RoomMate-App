@@ -10,7 +10,6 @@ import TodayPanel from './TodayPanel'
 import CalendarFilmStrip from './CalendarFilmStrip'
 import WheelPanel from './WheelPanel'
 import TaskSlideOver, { type TaskDraft } from './TaskSlideOver'
-import ManageTasksSlideOver from './ManageTasksSlideOver'
 import AddCategoryModal from './AddCategoryModal'
 import JackpotOverlay from './JackpotOverlay'
 
@@ -45,7 +44,6 @@ export default function NocturneHome({
 
   const [creating, setCreating] = useState(false)
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null)
-  const [managing, setManaging] = useState(false)
   const [showAddCategory, setShowAddCategory] = useState(false)
   const [jackpot, setJackpot] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -147,30 +145,46 @@ export default function NocturneHome({
   // Toggle a task from the calendar (specific date, may be past/future)
   async function handleCalendarTaskToggle(taskId: string, date: string, currentlyDone: boolean) {
     soundRef.current?.playSwipe()
-    setEvents((prev) => ({
-      ...prev,
-      [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: !currentlyDone } : ev),
-    }))
-    if (date === todayISO) {
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: !currentlyDone } : t))
-    }
-    try {
-      if (currentlyDone) {
-        await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete?date=${date}`)
-      } else {
-        await apiClient.post(`/api/dashboard/${householdId}/tasks/${taskId}/complete`, { date })
-      }
-      showToast(currentlyDone ? DAILY_TASKS.TOAST_CALENDAR_UNDONE : DAILY_TASKS.TOAST_CALENDAR_DONE)
-    } catch (err) {
-      console.error('[NocturneHome.handleCalendarTaskToggle]', err)
+    const evEntry = (events[date] ?? []).find((e) => e.taskId === taskId)
+    const target = evEntry?.targetCompletionsPerDay ?? 1
+    const currentCount = evEntry?.completionCount ?? (currentlyDone ? target : 0)
+
+    if (currentlyDone) {
       setEvents((prev) => ({
         ...prev,
-        [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: currentlyDone } : ev),
+        [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false, completionCount: 0 } : ev),
       }))
       if (date === todayISO) {
-        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: currentlyDone } : t))
+        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false, completionCount: 0 } : t))
       }
-      showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
+      try {
+        await apiClient.delete(`/api/dashboard/${householdId}/tasks/${taskId}/complete?date=${date}`)
+        showToast(DAILY_TASKS.TOAST_CALENDAR_UNDONE)
+      } catch (err) {
+        console.error('[NocturneHome.handleCalendarTaskToggle/uncomplete]', err)
+        setEvents((prev) => ({ ...prev, [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: true, completionCount: currentCount } : ev) }))
+        if (date === todayISO) setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: true, completionCount: currentCount } : t))
+        showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
+      }
+    } else {
+      const newCount = currentCount + 1
+      const isFullyDone = newCount >= target
+      setEvents((prev) => ({
+        ...prev,
+        [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: isFullyDone, completionCount: newCount } : ev),
+      }))
+      if (date === todayISO) {
+        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: isFullyDone, completionCount: newCount } : t))
+      }
+      try {
+        await apiClient.post(`/api/dashboard/${householdId}/tasks/${taskId}/complete`, { date })
+        if (isFullyDone) showToast(DAILY_TASKS.TOAST_CALENDAR_DONE)
+      } catch (err) {
+        console.error('[NocturneHome.handleCalendarTaskToggle/complete]', err)
+        setEvents((prev) => ({ ...prev, [date]: (prev[date] ?? []).map((ev) => ev.taskId === taskId ? { ...ev, done: false, completionCount: currentCount } : ev) }))
+        if (date === todayISO) setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, done: false, completionCount: currentCount } : t))
+        showToast(DAILY_TASKS.ERRORS.UPDATE_FAILED, '#d97777')
+      }
     }
   }
 
@@ -279,9 +293,27 @@ export default function NocturneHome({
 
   async function handleDeleteCategory(categoryId: string) {
     const cat = categories.find((c) => c.id === categoryId)
-    await apiClient.delete(`/api/dashboard/${householdId}/task-categories/${categoryId}`)
-    setCategories((prev) => prev.filter((c) => c.id !== categoryId))
-    if (cat) showToast(DAILY_TASKS.TOAST_CATEGORY_DELETED(cat.name), '#d97777')
+    try {
+      await apiClient.delete(`/api/dashboard/${householdId}/task-categories/${categoryId}`)
+      setCategories((prev) => prev.filter((c) => c.id !== categoryId))
+      if (cat) showToast(DAILY_TASKS.TOAST_CATEGORY_DELETED(cat.name), '#d97777')
+    } catch (err) {
+      const axiosErr = err as { response?: { status?: number; data?: { taskTitles?: string[] } } }
+      if (axiosErr.response?.status === 409 && axiosErr.response.data?.taskTitles) {
+        throw new Error(DAILY_TASKS.CATEGORY_IN_USE_BY(axiosErr.response.data.taskTitles))
+      }
+      throw new Error(getErrorMessage(err))
+    }
+  }
+
+  async function handleUpdateCategory(categoryId: string, name: string, color: string) {
+    const res = await apiClient.patch<{ data: TaskCategoryRecord }>(
+      `/api/dashboard/${householdId}/task-categories/${categoryId}`,
+      { name, color },
+    )
+    const updated = res.data.data
+    setCategories((prev) => prev.map((c) => c.id === categoryId ? updated : c))
+    showToast(DAILY_TASKS.TOAST_CATEGORY_UPDATED(name), color)
   }
 
   // ── Calendar events ──────────────────────────────────────────────────────────
@@ -395,16 +427,6 @@ export default function NocturneHome({
           {DAILY_TASKS.RESET_DAY}
         </button>
 
-        {/* Manage tasks */}
-        <button
-          onClick={() => setManaging(true)}
-          style={{ height: 34, padding: '0 14px', borderRadius: 20, cursor: 'pointer', fontSize: 12, background: 'transparent', border: '1px solid rgba(233,233,237,0.1)', color: '#75798c', transition: 'all .25s ease' }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = '#9397ab'; e.currentTarget.style.borderColor = 'rgba(233,233,237,0.2)' }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = '#75798c'; e.currentTarget.style.borderColor = 'rgba(233,233,237,0.1)' }}
-        >
-          {DAILY_TASKS.MANAGE_TASKS}
-        </button>
-
         {/* Add category */}
         <button
           onClick={() => setShowAddCategory(true)}
@@ -478,6 +500,7 @@ export default function NocturneHome({
             onComplete={handleComplete}
             onUncomplete={handleUncomplete}
             onEditTask={(task) => { soundRef.current?.playOpenPanel(); setEditingTask(task) }}
+            onDeleteTask={handleDeleteTask}
             onJackpot={() => setJackpot(true)}
             todayEvents={todayEvents}
           />
@@ -498,21 +521,14 @@ export default function NocturneHome({
         soundRef={soundRef}
       />
 
-      {/* Manage tasks */}
-      <ManageTasksSlideOver
-        open={managing}
-        tasks={tasks}
-        categoryMap={categoryMap}
-        onClose={() => setManaging(false)}
-        onEditTask={(task) => { setManaging(false); setEditingTask(task) }}
-        onDeleteTask={handleDeleteTask}
-      />
-
-      {/* Add category modal */}
+      {/* Add / manage category modal */}
       <AddCategoryModal
         open={showAddCategory}
+        categories={categories}
         onClose={() => setShowAddCategory(false)}
         onSave={handleCreateCategory}
+        onDelete={handleDeleteCategory}
+        onEdit={handleUpdateCategory}
       />
 
       {/* Jackpot overlay */}

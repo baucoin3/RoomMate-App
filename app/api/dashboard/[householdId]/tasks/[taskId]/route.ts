@@ -21,6 +21,7 @@ async function getMembership(supabase: ReturnType<typeof createClient>, househol
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
+    console.log("\n\nEDIT PATHC CALLED\n\n")
     const supabase = createClient()
 
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -29,6 +30,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const { data: membership } = await getMembership(supabase, params.householdId, user.id)
+    console.log(`\n\nMembershipt = ${JSON.stringify(membership)}\n\n`);
     if (!membership) {
       return NextResponse.json({ error: HOUSEHOLDS.ERRORS.FORBIDDEN }, { status: 403 })
     }
@@ -103,6 +105,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       user.id,
       payload,
     )
+    console.log(`\n\n Data from update daily task = ${JSON.stringify(data)} `)
+    console.log(`\n\n ERROR from update daily task = ${JSON.stringify(error)} `)
     if (error) return NextResponse.json({ error }, { status: 400 })
 
     return NextResponse.json({ data })

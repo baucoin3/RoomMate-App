@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import type { DailyTask, TaskScope } from '@/lib/types/dailyTasks'
 import type { TaskCategoryRecord } from '@/lib/types/taskCategories'
 import type { SoundEngine } from './SoundEngine'
@@ -72,6 +73,16 @@ export default function TaskSlideOver({
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => setMounted(true), [])
+
+  useEffect(() => {
+    if (open) {
+      scrollRef.current?.scrollTo({ top: 0 })
+    }
+  }, [open])
 
   // Sync draft when editTask changes or panel opens
   useEffect(() => {
@@ -121,7 +132,9 @@ export default function TaskSlideOver({
     }
   }
 
-  return (
+  if (!mounted) return null
+
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -130,7 +143,7 @@ export default function TaskSlideOver({
           position: 'fixed', inset: 0,
           background: 'rgba(11,12,20,0.66)',
           backdropFilter: 'blur(6px)',
-          zIndex: 800,
+          zIndex: 1000,
           opacity: open ? 1 : 0,
           pointerEvents: open ? 'auto' : 'none',
           transition: 'opacity .35s ease',
@@ -139,12 +152,13 @@ export default function TaskSlideOver({
 
       {/* Panel */}
       <div
+        ref={scrollRef}
         style={{
           position: 'fixed', right: 0, top: 0, bottom: 0, width: 460,
           background: 'linear-gradient(200deg,#232532,#161826)',
           borderLeft: '1px solid rgba(233,233,237,0.08)',
           boxShadow: '-30px 0 80px rgba(0,0,0,0.5)',
-          zIndex: 900,
+          zIndex: 1001,
           transform: open ? 'translateX(0)' : 'translateX(30px)',
           opacity: open ? 1 : 0,
           pointerEvents: open ? 'auto' : 'none',
@@ -454,6 +468,7 @@ export default function TaskSlideOver({
           </button>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   )
 }

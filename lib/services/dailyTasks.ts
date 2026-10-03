@@ -401,15 +401,27 @@ export async function updateDailyTask(
     if (payload.targetCompletionsPerDay !== undefined) updates.target_completions_per_day = payload.targetCompletionsPerDay
     if (payload.weeklyTarget !== undefined) updates.weekly_target = payload.weeklyTarget
 
-    const { data, error } = await supabase
+    console.log(`\n\nIN UPDATE SETRVICE FUNC: updates = ${JSON.stringify(updates)}\n\n`);
+    const { error: updateError } = await supabase
       .from('daily_tasks')
       .update(updates)
       .eq('id', taskId)
       .eq('household_id', householdId)
+
+            console.log(`\nn\ From supa base update updateErrro = ${JSON.stringify(updateError)}`);
+
+    if (updateError) return { data: null, error: updateError.message }
+
+    
+    const { data, error } = await supabase
+      .from('daily_tasks')
       .select('id, household_id, title, category, time_of_day, logs_to_calendar, created_by, created_at, scope, target_completions_per_day, weekly_target')
+      .eq('id', taskId)
+      .eq('household_id', householdId)
       .single()
 
-    if (error) return { data: null, error: error.message }
+    
+    if (error || !data) return { data: null, error: error?.message ?? 'Task not found.' }
 
     const today = getCurrentPeriodDate()
     const { data: comps } = await supabase
@@ -516,6 +528,7 @@ type TaskRow = {
   title: string
   category: string
   time_of_day: string | null
+  target_completions_per_day: number
 }
 
 type HouseholdEventRow = {
@@ -548,7 +561,7 @@ export async function getCalendarEventsForDateRange(
 
     const { data: taskRows, error: tasksError } = await supabase
       .from('daily_tasks')
-      .select('id, title, category, time_of_day')
+      .select('id, title, category, time_of_day, target_completions_per_day')
       .eq('household_id', householdId)
       .or(scopeFilter)
       .order('time_of_day', { ascending: true, nullsFirst: false })
@@ -584,10 +597,11 @@ export async function getCalendarEventsForDateRange(
 
     if (eventsResult.error) return { data: null, error: eventsResult.error.message }
 
-    // Build O(1) completion lookup: "taskId::date"
-    const completedSet = new Set<string>()
+    // Build O(1) completion count lookup: "taskId::date" → count
+    const completionCountMap = new Map<string, number>()
     for (const c of (completionsResult.data ?? [])) {
-      completedSet.add(`${c.task_id as string}::${c.completed_on as string}`)
+      const key = `${c.task_id as string}::${c.completed_on as string}`
+      completionCountMap.set(key, (completionCountMap.get(key) ?? 0) + 1)
     }
 
     // Generate all dates in range
@@ -603,14 +617,20 @@ export async function getCalendarEventsForDateRange(
 
     for (const date of dates) {
       // Tasks: all visible tasks shown on every day
-      const taskEvents: NocturneCalendarEvent[] = tasks.map((t) => ({
-        type: 'task' as const,
-        time: t.time_of_day ? formatTimeOfDay(t.time_of_day) : '—',
-        title: t.title,
-        cat: t.category as TaskCategory,
-        done: completedSet.has(`${t.id}::${date}`),
-        taskId: t.id,
-      }))
+      const taskEvents: NocturneCalendarEvent[] = tasks.map((t) => {
+        const target = (t.target_completions_per_day as number) ?? 1
+        const count = completionCountMap.get(`${t.id}::${date}`) ?? 0
+        return {
+          type: 'task' as const,
+          time: t.time_of_day ? formatTimeOfDay(t.time_of_day) : '—',
+          title: t.title,
+          cat: t.category as TaskCategory,
+          done: count >= target,
+          taskId: t.id,
+          completionCount: count,
+          targetCompletionsPerDay: target,
+        }
+      })
 
       // Household events for this date
       const dayEvents: NocturneCalendarEvent[] = ((eventsResult.data ?? []) as unknown as HouseholdEventRow[])

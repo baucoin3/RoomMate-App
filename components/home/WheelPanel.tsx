@@ -51,13 +51,14 @@ interface WheelPanelProps {
   onComplete: (taskId: string) => Promise<{ isFullyDone: boolean }>
   onUncomplete: (taskId: string) => Promise<void>
   onEditTask: (task: DailyTask) => void
+  onDeleteTask: (taskId: string) => Promise<void>
   todayEvents: NocturneCalendarEvent[]
   onJackpot?: () => void
 }
 
 export default function WheelPanel({
   tasks, now, isActive, categoryMap, soundRef,
-  springNonce, springIndex, onComplete, onUncomplete, onEditTask, onJackpot, todayEvents,
+  springNonce, springIndex, onComplete, onUncomplete, onEditTask, onDeleteTask, onJackpot, todayEvents,
 }: WheelPanelProps) {
   const nowMins = now.getHours() * 60 + now.getMinutes()
   const posRef = useRef(0)
@@ -65,7 +66,7 @@ export default function WheelPanel({
   const [pos, setPos] = useState(0)
   const rafRef = useRef<number | null>(null)
   const lastDetentRef = useRef(0)
-  const [burst, setBurst] = useState<{ color: string; key: number } | null>(null)
+  const [burst, setBurst] = useState<{ color: string; key: number; scale?: number } | null>(null)
   const completingRef = useRef(false)
   const [wheelToast, setWheelToast] = useState<string | null>(null)
   const wheelToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -106,15 +107,25 @@ export default function WheelPanel({
     startSpring()
   }
 
+  const arcContainerRef = useRef<HTMLDivElement>(null)
   const lastScrollRef = useRef(0)
-  function handleWheel(e: React.WheelEvent) {
-    e.preventDefault()
-    const now = Date.now()
-    if (now - lastScrollRef.current < 110) return
-    lastScrollRef.current = now
-    const delta = e.deltaY || e.deltaX
-    springTo(Math.round(targetRef.current) + (delta > 0 ? 1 : -1))
-  }
+
+  // Attach wheel listener with { passive: false } to allow preventDefault
+  useEffect(() => {
+    const el = arcContainerRef.current
+    if (!el) return
+    function onWheel(e: WheelEvent) {
+      e.preventDefault()
+      const now = Date.now()
+      if (now - lastScrollRef.current < 110) return
+      lastScrollRef.current = now
+      const delta = e.deltaY || e.deltaX
+      springTo(Math.round(targetRef.current) + (delta > 0 ? 1 : -1))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const dragRef = useRef({ active: false, dragging: false, startX: 0, startY: 0, startTarget: 0, pointerId: -1 })
 
@@ -182,14 +193,15 @@ export default function WheelPanel({
       } else {
         const { isFullyDone } = await onComplete(task.id)
         soundRef.current?.playComplete()
+        const color = catColor(task.category, categoryMap)
         if (isFullyDone) {
-          const color = catColor(task.category, categoryMap)
           setBurst({ color, key: Date.now() })
           if (onJackpot && Math.random() < 0.15) {
             onJackpot()
           }
         } else {
           const newCount = task.completionCount + 1
+          setBurst({ color, key: Date.now(), scale: 0.42 })
           showWheelToast(DAILY_TASKS.TOAST_PARTIAL(newCount, task.targetCompletionsPerDay))
         }
       }
@@ -233,7 +245,7 @@ export default function WheelPanel({
 
       {/* Arc container */}
       <div
-        onWheel={handleWheel}
+        ref={arcContainerRef}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -296,31 +308,38 @@ export default function WheelPanel({
                   transition: 'border-color .3s ease',
                 }}
               >
-                {/* Top row: category eyebrow + edit icon (non-center) + progress (multi-tap) */}
+                {/* Top row: category eyebrow + edit + delete icons (always visible) */}
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                   <div style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: done ? '#595d6c' : color }}>
                     {capitalizeFirst(task.category)}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {task.targetCompletionsPerDay > 1 && (
-                      <span style={{ fontSize: 10, color: done ? '#595d6c' : '#9397ab', fontVariantNumeric: 'tabular-nums' }}>
-                        {task.completionCount}/{task.targetCompletionsPerDay}
-                      </span>
-                    )}
-                    {!isCenter && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onEditTask(task) }}
-                        title="Edit task"
-                        style={{ width: 22, height: 22, borderRadius: 6, cursor: 'pointer', background: 'transparent', border: 'none', color: '#9397ab', opacity: 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'opacity .2s ease' }}
-                        onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
-                        onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.4' }}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                      </button>
-                    )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onEditTask(task) }}
+                      title="Edit task"
+                      style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.1)', color: '#9397ab', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .2s ease' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = '#b5abfc'; e.currentTarget.style.borderColor = 'rgba(145,132,217,0.4)' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = '#9397ab'; e.currentTarget.style.borderColor = 'rgba(233,233,237,0.1)' }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); void onDeleteTask(task.id) }}
+                      title="Delete task"
+                      style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer', background: 'rgba(233,233,237,0.06)', border: '1px solid rgba(233,233,237,0.1)', color: '#9397ab', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'all .2s ease' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = 'rgba(220,38,38,0.4)' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = '#9397ab'; e.currentTarget.style.borderColor = 'rgba(233,233,237,0.1)' }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        <path d="M10 11v6M14 11v6" />
+                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
 
@@ -348,8 +367,15 @@ export default function WheelPanel({
                   {task.title}
                 </div>
 
+                {/* Multi-tap counter */}
+                {task.targetCompletionsPerDay > 1 && (
+                  <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', color: done ? '#595d6c' : color, marginTop: 8, lineHeight: 1, textShadow: done ? 'none' : `0 0 20px ${color}80` }}>
+                    {task.completionCount}/{task.targetCompletionsPerDay}
+                  </div>
+                )}
+
                 {/* Time */}
-                <div style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', color: done ? '#595d6c' : '#75798c', marginTop: 8 }}>
+                <div style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', color: done ? '#595d6c' : '#75798c', marginTop: task.targetCompletionsPerDay > 1 ? 4 : 8 }}>
                   {formatTaskTime(task.timeOfDay)}
                 </div>
 
@@ -362,7 +388,7 @@ export default function WheelPanel({
 
         {burst && (
           <div style={{ position: 'absolute', left: '50%', top: 0, transform: 'translateX(-50%)', pointerEvents: 'none' }}>
-            <BurstAnimation key={burst.key} color={burst.color} onDone={() => setBurst(null)} />
+            <BurstAnimation key={burst.key} color={burst.color} scale={burst.scale} onDone={() => setBurst(null)} />
           </div>
         )}
       </div>
