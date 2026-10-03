@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { ShoppingList, ShoppingListItem } from '@/lib/types/shopping'
+import type { ShoppingList, ShoppingListItem, CommonShoppingItem } from '@/lib/types/shopping'
 
 /**
  * Fetch all shopping lists visible to the current user within a household:
@@ -123,6 +123,47 @@ export async function addItemsToList(
   if (error) return { data: [], skipped, error: error.message }
 
   return { data: data as ShoppingListItem[], skipped, error: null }
+}
+
+export async function getCommonShoppingItems(
+  supabase: SupabaseClient,
+  householdId: string,
+): Promise<{ data: CommonShoppingItem[]; error: string | null }> {
+  const { data, error } = await supabase
+    .from('common_shopping_items')
+    .select('id, household_id, name, color, created_by, created_at, sort_order')
+    .eq('household_id', householdId)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true })
+
+  if (error) return { data: [], error: error.message }
+  return { data: data as CommonShoppingItem[], error: null }
+}
+
+export async function createCommonShoppingItem(
+  supabase: SupabaseClient,
+  payload: { household_id: string; name: string; color: string; created_by: string },
+): Promise<{ data: CommonShoppingItem | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from('common_shopping_items')
+    .insert(payload)
+    .select('id, household_id, name, color, created_by, created_at, sort_order')
+    .single()
+
+  if (error) return { data: null, error: error.message }
+  return { data: data as CommonShoppingItem, error: null }
+}
+
+export async function deleteCommonShoppingItem(
+  supabase: SupabaseClient,
+  itemId: string,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('common_shopping_items')
+    .delete()
+    .eq('id', itemId)
+
+  return { error: error?.message ?? null }
 }
 
 /**
