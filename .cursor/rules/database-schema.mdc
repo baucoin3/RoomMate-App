@@ -6,7 +6,7 @@ alwaysApply: true
 
 # Database Schema Reference
 
-**Project ID:** `inbexkcbkoilfpuwctkx` | **Region:** us-west-2 | **Postgres:** 17 | **Last verified:** 2026-09-03
+**Project ID:** `inbexkcbkoilfpuwctkx` | **Region:** us-west-2 | **Postgres:** 17 | **Last verified:** 2026-10-03
 
 **Refresh:** After migrations, re-run Supabase MCP `list_tables` (verbose) and `pg_policies` / `pg_proc` queries; update this file.
 
@@ -20,7 +20,7 @@ alwaysApply: true
 
 ---
 
-## RLS matrix (27 tables)
+## RLS matrix (31 tables)
 
 | Table | RLS | Policy coverage notes |
 |-------|-----|------------------------|
@@ -51,8 +51,12 @@ alwaysApply: true
 | `expense_splits` | ⚠️ | **No RLS** |
 | `recurring_expenses` | ⚠️ | **No RLS** |
 | `recurring_expense_splits` | ⚠️ | **No RLS** |
+| `fitness_routines` | ⚠️ | **No RLS** |
+| `fitness_exercises` | ⚠️ | **No RLS** |
+| `fitness_sessions` | ⚠️ | **No RLS** |
+| `fitness_set_completions` | ⚠️ | **No RLS** |
 
-**Counts:** 15 with RLS ✅ · 12 without ⚠️
+**Counts:** 15 with RLS ✅ · 16 without ⚠️
 
 Do **not** `ENABLE ROW LEVEL SECURITY` without policies — that blocks all access. See [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security).
 
@@ -135,6 +139,13 @@ Client uploads: `components/receipts/ScanReceiptWizard.tsx`, `components/recipes
 - **`shopping_lists`** — `owner_type` enum; `user_id` or `household_id` per owner
 - **`shopping_list_items`** — `quantity`, `unit`, `is_checked`
 
+### Fitness (⚠️ no RLS)
+
+- **`fitness_routines`** — `household_id`, `name`, `created_by` → auth.users, `is_active` (bool, soft-delete); unique `(household_id, created_by, name)`
+- **`fitness_exercises`** — `routine_id` → fitness_routines (ON DELETE CASCADE), `name`, `sets` (int, default 3), `reps` (int, default 10), `weight` (numeric, nullable), `weight_unit` (text: `'lbs'` | `'kg'` | `'bodyweight'`, default `'lbs'`), `sort_order` (int), `created_at`
+- **`fitness_sessions`** — `household_id`, `routine_id` → fitness_routines, `user_id` → auth.users, `session_date` (date `YYYY-MM-DD`), `started_at` (timestamptz), `completed_at` (timestamptz, nullable); unique `(user_id, session_date)` — one session per user per day
+- **`fitness_set_completions`** — `session_id` → fitness_sessions (ON DELETE CASCADE), `exercise_id` → fitness_exercises (ON DELETE CASCADE), `set_number` (int), `actual_reps` (int, nullable), `actual_weight` (numeric, nullable), `completed_at` (timestamptz); unique `(session_id, exercise_id, set_number)` — used for upsert idempotency. **Columns `actual_reps` and `actual_weight` were added via `ALTER TABLE` after initial creation** (not in original CREATE TABLE).
+
 ### Calendar & Daily Tasks (✅ RLS)
 
 - **`meal_logs`** — `recipe_id`, `made_by_member_id`, `made_at` (date)
@@ -163,7 +174,9 @@ auth.users
         ├── task_categories  [household_id FK, name+color]
         └── daily_tasks ──► daily_task_completions
               [category stores task_categories.name as text]
-        └── (finances/shopping/recipes: 12 tables without RLS)
+        └── fitness_routines ──► fitness_exercises
+              └── fitness_sessions ──► fitness_set_completions
+        └── (finances/shopping/recipes/fitness: 16 tables without RLS)
 auth.users ──► shopping_lists [owner_type = user]
 auth.users ──► daily_tasks.created_by, daily_task_completions.completed_by
 auth.users ──► household_events.created_by_user_id [for personal event filtering]
@@ -197,6 +210,7 @@ auth.users ──► household_events.created_by_user_id [for personal event fil
 | Dashboard aggregate | `lib/services/dashboard.ts` |
 | `daily_tasks`, `daily_task_completions` | `lib/services/dailyTasks.ts` |
 | `task_categories` | `lib/services/taskCategories.ts` |
+| `fitness_routines`, `fitness_exercises`, `fitness_sessions`, `fitness_set_completions` | `lib/services/fitness.ts` |
 
 **Exception:** `app/api/dashboard/[householdId]/events/*.ts` queries `household_events` in the route — prefer extracting to a service when editing.
 
@@ -210,6 +224,35 @@ auth.users ──► household_events.created_by_user_id [for personal event fil
 | `app/api/dashboard/[householdId]/tasks/reset` | DELETE | Clears all of today's completions for the user |
 | `app/api/dashboard/[householdId]/task-categories` | GET, POST | List (auto-seeds 4 defaults if empty) + create |
 | `app/api/dashboard/[householdId]/task-categories/[categoryId]` | DELETE | Blocked (409) if any tasks reference that category name |
+
+### Fitness API routes
+
+| Route | Methods | Notes |
+|-------|---------|-------|
+| `app/api/fitness/[householdId]/routines` | GET, POST | List user's active routines (with exercises); create routine |
+| `app/api/fitness/[householdId]/routines/[routineId]` | PATCH, DELETE | Rename or soft-delete routine (`is_active = false`) |
+| `app/api/fitness/[householdId]/exercises` | POST | Add exercise to routine |
+| `app/api/fitness/[householdId]/exercises/[exerciseId]` | PATCH, DELETE | Update or hard-delete exercise |
+| `app/api/fitness/[householdId]/sessions` | GET | No params: returns today's active session + auto-completes stale; `?year=Y&month=M`: returns session list for calendar month |
+| `app/api/fitness/[householdId]/sessions` | POST | Get or create today's session (one per user per day) |
+| `app/api/fitness/[householdId]/sessions/[sessionId]` | PATCH | Mark session completed |
+| `app/api/fitness/[householdId]/sessions/[sessionId]/detail` | GET | Full session detail for day-click modal (exercises + set completions) |
+| `app/api/fitness/[householdId]/set-completions` | PUT | Upsert a set log (idempotent via unique constraint) |
+| `app/api/fitness/[householdId]/metrics` | GET | Progress metrics: `?year=YYYY&month=M`; returns streaks, weekly buckets, compliance %, calendar days |
+
+**Cron job (add via Supabase dashboard SQL editor):**
+```sql
+SELECT cron.schedule(
+  'auto-complete-stale-fitness-sessions',
+  '0 3 * * *',
+  $$
+  UPDATE fitness_sessions
+  SET completed_at = (session_date::timestamptz + interval '23 hours 59 minutes')
+  WHERE completed_at IS NULL
+    AND session_date < CURRENT_DATE;
+  $$
+);
+```
 
 **Migrations:** `supabase/migrations/` (history); live DB may differ until migrations are applied everywhere.
 
