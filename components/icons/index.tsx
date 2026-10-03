@@ -219,6 +219,14 @@ const BeakerIcon = icon(
   />,
 )
 
+export const DumbbellIcon = icon(
+  <>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v9.75h-.75a2.25 2.25 0 010-4.5v0a2.25 2.25 0 010-4.5v0zM17.25 6.75h-.75v9.75h.75a2.25 2.25 0 000-4.5v0a2.25 2.25 0 000-4.5v0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 9.75h9M7.5 14.25h9" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 8.25h2.25v7.5H4.5a.75.75 0 01-.75-.75v-6a.75.75 0 01.75-.75zM19.5 8.25h-2.25v7.5h2.25a.75.75 0 00.75-.75v-6a.75.75 0 00-.75-.75z" />
+  </>,
+)
+
 /** Gradient placeholders when a recipe has no image (cycle by id). */
 export const RECIPE_IMAGE_PLACEHOLDERS = [
   { bg: 'from-[#FAC775] to-[#EF9F27]', Icon: ShoppingBagIcon },

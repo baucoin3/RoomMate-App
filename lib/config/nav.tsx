@@ -1,5 +1,5 @@
 import { ROUTES } from '@/lib/constants/routes'
-import { RECEIPTS, NAV } from '@/locales/en'
+import { RECEIPTS, NAV, FITNESS } from '@/locales/en'
 
 export interface NavItem {
   key: string
@@ -48,6 +48,16 @@ function ReceiptsIcon({ className }: { className?: string }) {
   )
 }
 
+function DumbbellNavIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className} aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 8.25h.75v7.5h-.75a.75.75 0 01-.75-.75v-6a.75.75 0 01.75-.75zM19.5 8.25h-.75v7.5h.75a.75.75 0 00.75-.75v-6a.75.75 0 00-.75-.75z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 9.75h.75v4.5h-.75V9.75zM18 9.75h.75v4.5H18V9.75z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 10.5h12M6 13.5h12" />
+    </svg>
+  )
+}
+
 function HouseholdIcon({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className} aria-hidden="true">
@@ -86,6 +96,12 @@ export const HOUSEHOLD_NAV: NavItem[] = [
     label: RECEIPTS.NAV_LABEL,
     icon: ReceiptsIcon,
     href: (id) => ROUTES.HOUSEHOLD_RECEIPTS(id),
+  },
+  {
+    key: 'fitness',
+    label: FITNESS.NAV_LABEL,
+    icon: DumbbellNavIcon,
+    href: (id) => ROUTES.HOUSEHOLD_FITNESS(id),
   },
   {
     key: 'household',
